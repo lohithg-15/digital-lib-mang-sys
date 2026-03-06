@@ -1,0 +1,527 @@
+from fastapi import FastAPI, File, UploadFile, Form, Depends, HTTPException, Header
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import shutil
+import os
+import sys
+import traceback
+from typing import Optional
+
+# Add BACKEND directory to path so imports work
+sys.path.insert(0, os.path.dirname(__file__))
+
+from gemini_service import extract_book_metadata_with_gemini, validate_gemini_api_key
+from database import create_table, insert_book, search_books, search_books_fuzzy, get_all_books, delete_all_books, update_book, get_books_with_ids
+from book_lookup import identify_book
+from auth import (
+    create_users_table, login_user, register_user, verify_token, 
+    get_user_by_id, list_all_users, ROLE_ADMIN, ROLE_CUSTOMER
+)
+
+app = FastAPI()
+
+# Enable CORS to allow frontend to communicate with backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ====================== PYDANTIC MODELS ======================
+class AddBookRequest(BaseModel):
+    title: str
+    author: str
+    quantity: int
+    shelf: str
+
+class UpdateBookRequest(BaseModel):
+    book_id: int
+    title: Optional[str] = None
+    author: Optional[str] = None
+    quantity: Optional[int] = None
+    shelf: Optional[str] = None
+
+UPLOAD_FOLDER = "uploads"
+BACKEND_READY = {"gemini": False, "database": False, "auth": False}
+
+# Dependency: Get current user from token
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    """Extract and verify user from Bearer token"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    
+    try:
+        scheme, token = authorization.split()
+        if scheme.lower() != "bearer":
+            raise HTTPException(status_code=401, detail="Invalid authorization scheme")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+    
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    return payload
+
+
+async def get_admin_user(current_user: dict = Depends(get_current_user)):
+    """Ensure user is an admin"""
+    if current_user.get("role") != ROLE_ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
+
+@app.on_event("startup")
+def startup():
+    """Initialize database, auth, and Gemini API on startup"""
+    print("\n" + "="*60)
+    print("🚀 SMART BOOK FINDER - BACKEND STARTUP")
+    print("="*60)
+    
+    # Initialize books table
+    create_table()
+    BACKEND_READY["database"] = True
+    print("✅ Database initialized")
+    
+    # Initialize users table
+    create_users_table()
+    BACKEND_READY["auth"] = True
+    print("✅ Authentication initialized")
+    
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
+        print(f"✅ Upload folder created at: {UPLOAD_FOLDER}")
+    
+    # Initialize Gemini API
+    print("\n🤖 Initializing Gemini Vision API...")
+    if validate_gemini_api_key():
+        BACKEND_READY["gemini"] = True
+        print("✅ Gemini API ready! Backend is fully initialized.\n")
+    else:
+        print("❌ GEMINI_API_KEY not set in .env file")
+        print("   Get a free API key at: https://aistudio.google.com/apikey")
+        print("   Add to .env file: GEMINI_API_KEY=your_key_here")
+        print("   Backend will not work without this key.\n")
+    
+    print("="*60 + "\n")
+
+@app.get("/")
+def home():
+    return {"message": "Book Finder Backend running", "version": "2.0", "features": ["authentication", "role-based-access"]}
+
+@app.get("/status/")
+def status():
+    """Check backend readiness"""
+    return {
+        "backend_running": True,
+        "database_ready": BACKEND_READY["database"],
+        "auth_ready": BACKEND_READY["auth"],
+        "gemini_api_ready": BACKEND_READY["gemini"],
+        "status": "ready" if all(BACKEND_READY.values()) else "initializing",
+        "message": "All systems ready!" if all(BACKEND_READY.values()) else "Initializing..."
+    }
+
+# ======================== AUTHENTICATION ENDPOINTS ========================
+
+@app.post("/auth/register/")
+def register(username: str = Form(...), password: str = Form(...), role: str = Form(default=ROLE_CUSTOMER)):
+    """Register a new user (customer or admin)"""
+    result = register_user(username, password, role)
+    
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    
+    return result
+
+
+@app.post("/auth/login/")
+def login(username: str = Form(...), password: str = Form(...)):
+    """Login endpoint - returns JWT token"""
+    result = login_user(username, password)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=401, detail=result.get("error", "Login failed"))
+    
+    return result
+
+
+@app.get("/auth/me/")
+async def get_current_user_info(current_user: dict = Depends(get_current_user)):
+    """Get current authenticated user info"""
+    user = get_user_by_id(current_user["user_id"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@app.post("/auth/logout/")
+async def logout(current_user: dict = Depends(get_current_user)):
+    """Logout endpoint (frontend will delete token)"""
+    return {
+        "message": "Logged out successfully",
+        "status": "success"
+    }
+
+# ======================== BOOK UPLOAD (ADMIN ONLY) ========================
+
+@app.post("/upload-book/")
+async def upload_book(
+    image: UploadFile = File(...),
+    quantity: int = Form(...),
+    shelf: str = Form(...),
+    admin: dict = Depends(get_admin_user)
+):
+    """Upload book - ADMIN ONLY"""
+    try:
+        print(f"\n{'='*70}")
+        print(f"📤 BOOK UPLOAD - Started by: {admin['username']}")
+        print(f"{'='*70}")
+        
+        image_path = os.path.join(UPLOAD_FOLDER, image.filename)
+        with open(image_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
+        print(f"✅ Image saved: {image_path}")
+
+        # ============ GEMINI VISION API EXTRACTION ============
+        print(f"\n🤖 BOOK COVER ANALYSIS: Gemini Vision API")
+        print(f"   Analyzing book cover with AI...")
+        
+        gemini_result = extract_book_metadata_with_gemini(image_path)
+        
+        extraction_method = "unknown"
+        title = "Unknown"
+        author = "Unknown"
+        
+        if gemini_result and gemini_result.get("title"):
+            # Gemini extraction successful
+            title = gemini_result.get("title", "Unknown").strip()
+            author = gemini_result.get("author", "Unknown").strip()
+            extraction_method = "gemini-vision-api"
+            
+            print(f"\n   ✅ EXTRACTION SUCCESS!")
+            print(f"   Title:     {title}")
+            print(f"   Author:    {author}")
+            print(f"   Publisher: {gemini_result.get('publisher', 'N/A')}")
+            print(f"   ISBN:      {gemini_result.get('isbn', 'N/A')}")
+            
+            gemini_debug = {
+                "method": "gemini-vision-api",
+                "publisher": gemini_result.get("publisher", ""),
+                "isbn": gemini_result.get("isbn", ""),
+                "subtitle": gemini_result.get("subtitle", ""),
+                "confidence": gemini_result.get("confidence", "unknown")
+            }
+        else:
+            # Gemini extraction failed
+            print(f"\n❌ EXTRACTION FAILED")
+            print(f"   Gemini API could not extract book metadata from image.")
+            print(f"\n   🔧 TROUBLESHOOTING:")
+            print(f"   1. Check GEMINI_API_KEY in .env file is set and valid")
+            print(f"   2. Verify image is a valid book cover (not corrupted)")
+            print(f"   3. Ensure book cover text is clearly visible")
+            print(f"   4. Check internet connection and API rate limits")
+            print(f"   5. Get a free API key: https://aistudio.google.com/apikey")
+            
+            raise HTTPException(
+                status_code=500, 
+                detail="❌ Failed to extract book data. Check console log for details: 1) GEMINI_API_KEY in .env, 2) Image quality, 3) Internet connection, 4) API errors"
+            )
+
+        # ============ VALIDATION & CORRECTION ============
+        print(f"\n✅ VALIDATION")
+        
+        # Final validation
+        if not title or title.lower() == "unknown" or len(title.strip()) < 3:
+            title = "Book (Extraction Failed)"
+            print(f"   ⚠️ Title is invalid, using fallback: {title}")
+        if not author or author.lower() == "unknown" or len(author.strip()) < 3:
+            author = "Unknown Author"
+            print(f"   ⚠️ Author is invalid, using fallback: {author}")
+        
+        # Clean up any remaining issues
+        title = title.strip()
+        author = author.strip()
+        
+        print(f"   Final Title:  {title}")
+        print(f"   Final Author: {author}")
+
+        # ============ EXTRACTION COMPLETE - READY FOR REVIEW ============
+        print(f"\n📋 EXTRACTION COMPLETE - Waiting for admin review")
+        print(f"   Title: {title}")
+        print(f"   Author: {author}")
+        print(f"   Ready for admin to review, edit, and save")
+        print(f"\n{'='*70}\n")
+
+        return {
+            "message": "Book extracted successfully - Ready for review and edit",
+            "title": title,
+            "author": author,
+            "quantity": quantity,
+            "shelf": shelf,
+            "isbn": gemini_result.get("isbn", "") if gemini_result else "",
+            "uploaded_by": admin['username'],
+            "extraction_method": extraction_method,
+            "gemini_debug": gemini_debug
+        }
+    except Exception as e:
+        print(f"❌ Upload error: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+# ======================== BOOK SEARCH (PUBLIC - ANYONE CAN SEARCH) ========================
+
+@app.get("/search-book/")
+def search_book(query: str):
+    """Search for books by title or author. Uses partial match first, then fuzzy (typo-tolerant) if no results."""
+    try:
+        # Validate input
+        if not query or query.strip() == "":
+            return {
+                "count": 0,
+                "books": [],
+                "error": "Query cannot be empty",
+                "status": "error"
+            }
+
+        print(f"\n🔍 Search query: '{query}'")
+        results = search_books(query)
+
+        # If no results from partial match, try fuzzy (typo-tolerant) search
+        did_you_mean = None
+        if not results:
+            fuzzy_results, suggested = search_books_fuzzy(query)
+            if fuzzy_results:
+                results = fuzzy_results
+                did_you_mean = suggested  # e.g. "Harry Potter" for query "Harry Poter"
+
+        books = []
+        for r in results:
+            books.append({
+                "title": r[0] if r[0] else "Unknown",
+                "author": r[1] if r[1] else "Unknown",
+                "quantity": r[2] if r[2] else 0,
+                "shelf": r[3] if r[3] else "N/A"
+            })
+
+        print(f"✅ Found {len(books)} book(s) for query '{query}'\n")
+
+        out = {
+            "count": len(books),
+            "books": books,
+            "status": "success" if len(books) > 0 else "not_found",
+            "query": query
+        }
+        if did_you_mean is not None:
+            out["did_you_mean"] = did_you_mean
+        return out
+    except Exception as e:
+        print(f"❌ Search error: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+# ======================== DEBUG ENDPOINTS (ADMIN ONLY) ========================
+
+# ======================== MANUAL BOOK ENTRY (ADMIN ONLY) ========================
+
+@app.post("/add-book-manual/")
+async def add_book_manual(
+    request: AddBookRequest,
+    admin: dict = Depends(get_admin_user)
+):
+    """Add a book manually without uploading an image - ADMIN ONLY"""
+    try:
+        print(f"\n📝 MANUAL BOOK ADDITION - Requested by: {admin['username']}")
+        print(f"   Title: {request.title}")
+        print(f"   Author: {request.author}")
+        print(f"   Quantity: {request.quantity}, Shelf: {request.shelf}")
+        
+        # Validate inputs
+        if not request.title or len(request.title.strip()) < 2:
+            raise HTTPException(status_code=400, detail="Title must be at least 2 characters")
+        if not request.author or len(request.author.strip()) < 2:
+            raise HTTPException(status_code=400, detail="Author must be at least 2 characters")
+        if request.quantity < 1:
+            raise HTTPException(status_code=400, detail="Quantity must be at least 1")
+        if not request.shelf or len(request.shelf.strip()) < 1:
+            raise HTTPException(status_code=400, detail="Shelf location cannot be empty")
+        
+        ok = insert_book(request.title, request.author, request.quantity, request.shelf, isbn=None)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to save book to database")
+        
+        print(f"   ✅ Book added successfully")
+        return {
+            "message": "Book added successfully",
+            "title": request.title,
+            "author": request.author,
+            "quantity": request.quantity,
+            "shelf": request.shelf,
+            "added_by": admin["username"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Add book error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to add book: {str(e)}")
+
+
+# ======================== SAVE EXTRACTED BOOK (ADMIN ONLY) ========================
+
+@app.post("/save-extracted-book/")
+async def save_extracted_book(
+    request: AddBookRequest,
+    admin: dict = Depends(get_admin_user)
+):
+    """Save extracted book data that was reviewed/edited by admin - ADMIN ONLY"""
+    try:
+        print(f"\n💾 SAVING EXTRACTED BOOK - Requested by: {admin['username']}")
+        print(f"   Title: {request.title}")
+        print(f"   Author: {request.author}")
+        print(f"   Quantity: {request.quantity}, Shelf: {request.shelf}")
+        
+        # Validate inputs
+        if not request.title or len(request.title.strip()) < 2:
+            raise HTTPException(status_code=400, detail="Title must be at least 2 characters")
+        if not request.author or len(request.author.strip()) < 2:
+            raise HTTPException(status_code=400, detail="Author must be at least 2 characters")
+        if request.quantity < 1:
+            raise HTTPException(status_code=400, detail="Quantity must be at least 1")
+        if not request.shelf or len(request.shelf.strip()) < 1:
+            raise HTTPException(status_code=400, detail="Shelf location cannot be empty")
+        
+        ok = insert_book(request.title, request.author, request.quantity, request.shelf, isbn=None)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to save book to database")
+        
+        print(f"   ✅ Extracted book saved successfully")
+        return {
+            "message": "Extracted book saved successfully",
+            "title": request.title,
+            "author": request.author,
+            "quantity": request.quantity,
+            "shelf": request.shelf,
+            "saved_by": admin["username"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Save extracted error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save: {str(e)}")
+
+
+# ======================== GET BOOKS FOR EDITING (ADMIN ONLY) ========================
+
+@app.get("/books-for-edit/")
+async def get_books_for_edit(admin: dict = Depends(get_admin_user)):
+    """Get all books with IDs for editing - ADMIN ONLY"""
+    try:
+        books = get_books_with_ids()
+        return {
+            "total_books": len(books),
+            "accessed_by": admin['username'],
+            "books": [
+                {
+                    "id": b[0],
+                    "title": b[1],
+                    "author": b[2],
+                    "quantity": b[3],
+                    "shelf": b[4],
+                    "isbn": b[5]
+                } for b in books
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ======================== UPDATE BOOK (ADMIN ONLY) ========================
+
+@app.put("/update-book/")
+async def update_book_endpoint(
+    request: UpdateBookRequest,
+    admin: dict = Depends(get_admin_user)
+):
+    """Update a book's details (title, author, quantity, shelf) - ADMIN ONLY"""
+    try:
+        print(f"\n🔄 UPDATE BOOK - Requested by: {admin['username']}")
+        print(f"   Book ID: {request.book_id}")
+        
+        # Validate inputs if provided
+        if request.title is not None and len(request.title.strip()) < 2:
+            raise HTTPException(status_code=400, detail="Title must be at least 2 characters")
+        if request.author is not None and len(request.author.strip()) < 2:
+            raise HTTPException(status_code=400, detail="Author must be at least 2 characters")
+        if request.quantity is not None and request.quantity < 1:
+            raise HTTPException(status_code=400, detail="Quantity must be at least 1")
+        if request.shelf is not None and len(request.shelf.strip()) < 1:
+            raise HTTPException(status_code=400, detail="Shelf location cannot be empty")
+        
+        ok = update_book(request.book_id, request.title, request.author, request.quantity, request.shelf)
+        
+        if not ok:
+            raise HTTPException(status_code=404, detail=f"Book with ID {request.book_id} not found")
+        
+        print(f"   ✅ Book updated successfully")
+        return {
+            "message": "Book updated successfully",
+            "book_id": request.book_id,
+            "updated_by": admin["username"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Update error: {e}")
+        raise HTTPException(status_code=500, detail=f"Update failed: {str(e)}")
+
+
+# ======================== DEBUG ENDPOINTS (ADMIN ONLY) ========================
+
+@app.get("/debug/all-books/")
+async def debug_all_books(admin: dict = Depends(get_admin_user)):
+    """Debug: See all books in database - ADMIN ONLY"""
+    try:
+        books = get_all_books()
+        return {
+            "total_books": len(books),
+            "accessed_by": admin['username'],
+            "books": [
+                {
+                    "title": b[0],
+                    "author": b[1],
+                    "quantity": b[2],
+                    "shelf": b[3]
+                } for b in books
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/debug/reset-database/")
+async def reset_database(admin: dict = Depends(get_admin_user)):
+    """Debug: Reset database - ADMIN ONLY"""
+    try:
+        delete_all_books()
+        print(f"⚠️ Database reset by {admin['username']}")
+        return {
+            "message": "✅ Database reset successfully",
+            "reset_by": admin['username'],
+            "status": "success"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/debug/list-users/")
+async def list_users(admin: dict = Depends(get_admin_user)):
+    """Debug: List all users - ADMIN ONLY"""
+    users = list_all_users()
+    return {
+        "total_users": len(users),
+        "accessed_by": admin['username'],
+        "users": users
+    }
+
