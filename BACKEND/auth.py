@@ -1,5 +1,5 @@
 """
-Authentication module for Smart Book Finder
+Authentication module for A Digital Library Book Tracking and Management System
 Handles user registration, login, JWT tokens, and role-based access control
 """
 

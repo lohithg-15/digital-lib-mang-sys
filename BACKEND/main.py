@@ -77,7 +77,7 @@ async def get_admin_user(current_user: dict = Depends(get_current_user)):
 def startup():
     """Initialize database, auth, and Gemini API on startup"""
     print("\n" + "="*60)
-    print("🚀 SMART BOOK FINDER - BACKEND STARTUP")
+    print("🚀 DIGITAL LIBRARY SYSTEM - BACKEND STARTUP")
     print("="*60)
     
     # Initialize books table

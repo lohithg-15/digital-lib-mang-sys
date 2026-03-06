@@ -1,4 +1,4 @@
-# 📚 Smart Book Finder
+# 📚 A Digital Library Book Tracking and Management System
 
 An intelligent book management system with AI-powered book identification using Gemini Vision API, Open Library lookup, fuzzy search, and role-based access control.
 
@@ -33,7 +33,7 @@ An intelligent book management system with AI-powered book identification using 
 ## Project Structure
 
 ```
-Smart Book Finder/
+A Digital Library Book Tracking and Management System/
 ├── BACKEND/
 │   ├── main.py              # FastAPI app & endpoints
 │   ├── auth.py              # Auth & users

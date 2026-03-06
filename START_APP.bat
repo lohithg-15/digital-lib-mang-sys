@@ -1,9 +1,10 @@
 @echo off
-REM Smart Book Finder - Complete Startup Script
+REM A Digital Library Book Tracking and Management System - Startup Script
 
 echo.
 echo ============================================================
-echo           SMART BOOK FINDER - STARTUP SCRIPT
+echo      DIGITAL LIBRARY BOOK TRACKING AND MANAGEMENT SYSTEM
+echo                    STARTUP SCRIPT
 echo ============================================================
 echo.
 
@@ -29,7 +30,7 @@ echo.
 echo [2/4] Starting BACKEND (FastAPI on port 8000)...
 echo         Running: uvicorn main:app --reload
 echo.
-start "Smart Book Finder - BACKEND" cmd /k "cd /d %~dp0BACKEND && uvicorn main:app --reload"
+start "Digital Library - BACKEND" cmd /k "cd /d %~dp0BACKEND && uvicorn main:app --reload"
 
 REM Wait for backend to start
 echo [3/4] Waiting for backend to start (10 seconds)...
@@ -39,11 +40,11 @@ echo.
 echo [4/4] Starting FRONTEND (HTTP Server on port 5500)...
 echo         Running: python -m http.server 5500
 echo.
-start "Smart Book Finder - FRONTEND" cmd /k "cd /d %~dp0FRONTEND && python -m http.server 5500"
+start "Digital Library - FRONTEND" cmd /k "cd /d %~dp0FRONTEND && python -m http.server 5500"
 
 echo.
 echo ============================================================
-echo           ✅ SMART BOOK FINDER IS STARTING
+echo          ✅ DIGITAL LIBRARY SYSTEM IS STARTING
 echo ============================================================
 echo.
 echo BACKEND:  http://127.0.0.1:8000
