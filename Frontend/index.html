@@ -3,52 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A Digital Library Book Tracking and Management System</title>
+    <title>Digital Library Management System</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <!-- Login Page (shown when not authenticated) -->
 <div id="loginContainer" class="login-page">
-    <div class="login-box">
-        <div class="login-header">
-            <h1>📚 A Digital Library Book Tracking and Management System</h1>
-        </div>
-
-        <!-- Login Form -->
-        <div id="loginForm" class="login-form">
-            <h2>Choose Your Role</h2>
-            <p class="login-subtitle">Sign in to continue</p>
-
-            <div class="role-selector">
-                <button class="role-btn active" data-role="admin">
-                    🏪 Admin Login
-                </button>
-                <button class="role-btn" data-role="customer">
-                    👤 Customer (No Login)
-                </button>
+    <div class="login-container-wrapper">
+        <div class="login-box">
+            <div class="login-header">
+                <div class="logo-icon">📚</div>
+                <h1>Digital Library</h1>
+                <p>Book Tracking & Management</p>
             </div>
 
-            <form id="authForm">
-                <div id="credentialsSection" style="display: block;">
-                    <div class="form-group">
-                        <label for="username">Username:</label>
-                        <input type="text" id="username" placeholder="Enter username" required />
-                    </div>
-                    <div class="form-group">
-                        <label for="password">Password:</label>
-                        <input type="password" id="password" placeholder="Enter password" required />
-                    </div>
-                    <button type="submit" class="btn-primary" id="loginBtn">Login as Admin</button>
+            <!-- Login Form -->
+            <div id="loginForm" class="login-form">
+                <h2>Select Access Type</h2>
+
+                <div class="role-selector">
+                    <button class="role-btn active" data-role="admin">
+                        <span class="role-icon">⚙️</span>
+                        <span>Admin Login</span>
+                    </button>
+                    <button class="role-btn" data-role="customer">
+                        <span class="role-icon">🔍</span>
+                        <span>Customer Search</span>
+                    </button>
                 </div>
 
-                <div id="customerLoginSection" style="display: none;">
-                    <p class="customer-message">Welcome! You can search for books without creating an account.</p>
-                    <button type="button" class="btn-primary" id="customerBtn">Continue as Customer</button>
-                </div>
-            </form>
+                <form id="authForm">
+                    <div id="credentialsSection" style="display: block;">
+                        <div class="form-group">
+                            <label for="username">Username</label>
+                            <input type="text" id="username" placeholder="Enter your username" required />
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <input type="password" id="password" placeholder="Enter your password" required />
+                        </div>
+                        <button type="submit" class="btn-primary" id="loginBtn">Sign In</button>
+                    </div>
 
-            <div id="loginError" class="error-message" style="display: none;"></div>
+                    <div id="customerLoginSection" style="display: none;">
+                        <p class="customer-message">Browse our library collection without an account</p>
+                        <button type="button" class="btn-primary" id="customerBtn">Continue as Guest</button>
+                    </div>
+                </form>
+
+                <div id="loginError" class="error-message" style="display: none;"></div>
+            </div>
         </div>
     </div>
 </div>
