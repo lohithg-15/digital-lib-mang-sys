@@ -339,6 +339,213 @@ def _extract_json_from_response(response_text: str) -> Optional[str]:
     return json_str
 
 
+def validate_image_quality(image_path: str, max_retries: int = 1) -> Dict[str, any]:
+    """
+    Validate if an image is a real book cover with good quality.
+    Detects: blurry images, non-book items, corrupted images, unclear images.
+    
+    Args:
+        image_path: Path to the image file
+        max_retries: Number of retry attempts
+    
+    Returns:
+        Dictionary with format:
+        {
+            "is_valid": True/False,
+            "quality": "high/medium/low",
+            "issues": ["list of detected issues"],
+            "message": "Human-readable validation message"
+        }
+    """
+    
+    if not GEMINI_API_KEY:
+        return {
+            "is_valid": False,
+            "quality": "unknown",
+            "issues": ["API key not configured"],
+            "message": "❌ Cannot validate: Gemini API not configured"
+        }
+    
+    if not os.path.exists(image_path):
+        return {
+            "is_valid": False,
+            "quality": "unknown",
+            "issues": ["Image file not found"],
+            "message": "❌ Image file not found"
+        }
+    
+    # Check file size
+    file_size = os.path.getsize(image_path)
+    if file_size == 0:
+        return {
+            "is_valid": False,
+            "quality": "unknown",
+            "issues": ["Image file is empty"],
+            "message": "❌ Image file is empty (0 bytes)"
+        }
+    
+    if file_size > 20 * 1024 * 1024:
+        return {
+            "is_valid": False,
+            "quality": "unknown",
+            "issues": ["Image file too large"],
+            "message": f"❌ Image file too large ({file_size} bytes, max 20MB)"
+        }
+    
+    # Try to validate with Gemini
+    models_to_try = ["gemini-2.5-flash"]  # Use fast model for validation
+    
+    for model_name in models_to_try:
+        for attempt in range(max_retries):
+            try:
+                result = _validate_image_with_gemini(image_path, model_name)
+                if result:
+                    return result
+            except Exception as e:
+                print(f"   ⚠️ Validation attempt {attempt + 1} failed: {str(e)[:100]}")
+                if attempt < max_retries - 1:
+                    continue
+                break
+    
+    return {
+        "is_valid": False,
+        "quality": "unknown",
+        "issues": ["Validation service temporarily unavailable"],
+        "message": "❌ Could not validate image (API error). Please try again."
+    }
+
+
+def _validate_image_with_gemini(image_path: str, model_name: str) -> Optional[Dict[str, any]]:
+    """
+    Use Gemini to validate if an image is a valid book cover.
+    
+    Args:
+        image_path: Path to image file
+        model_name: Gemini model name
+    
+    Returns:
+        Validation result or None on error
+    """
+    try:
+        # Read and encode image
+        with open(image_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        
+        # Validation prompt
+        prompt = """Analyze this image and validate if it's a real, valid book cover. Check for:
+
+1. IS IT A BOOK COVER? Must have text (title, author visible)
+2. IMAGE QUALITY: Is it clear or blurry?
+3. CONTENT: Is it appropriate (not completely black, white, corrupted)?
+4. CLARITY: Can text be read clearly?
+
+Return ONLY a JSON response with this exact format (no additional text):
+{
+  "is_book_cover": true/false,
+  "is_clear": true/false,
+  "is_valid": true/false,
+  "quality": "high/medium/low",
+  "issues": ["list of any problems found"],
+  "reason": "Brief explanation"
+}
+
+Rules:
+- is_valid should be true ONLY if: is_book_cover=true AND is_clear=true AND image is not corrupted
+- Mark as "low" quality if: blurry, hard to read text, poor lighting
+- Mark as "medium" quality if: readable but not perfect
+- Mark as "high" quality if: clear, crisp, readable
+- List specific issues: "blurry", "not a book cover", "text unreadable", "corrupted image", "completely blank/black", "not a book item"
+"""
+
+        # Determine MIME type
+        img_ext = os.path.splitext(image_path)[1].lower()
+        mime_type_map = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp'
+        }
+        mime_type = mime_type_map.get(img_ext, 'image/png')
+        
+        # Build request
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": b64,
+                            }
+                        },
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "topK": 1,
+                "topP": 0.8,
+            }
+        }
+        
+        print(f"   📡 Validating image with {model_name}...")
+        res = requests.post(url, json=payload, params={"key": GEMINI_API_KEY}, timeout=30)
+        
+        if res.status_code != 200:
+            print(f"   ⚠️ Validation API error: {res.status_code}")
+            return None
+        
+        res.raise_for_status()
+        data = res.json()
+        
+        # Extract response
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return None
+        
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not parts:
+            return None
+        
+        response_text = parts[0].get("text", "").strip()
+        json_str = _extract_json_from_response(response_text)
+        
+        if not json_str:
+            return None
+        
+        parsed = json.loads(json_str)
+        
+        # Format result
+        is_valid = parsed.get("is_valid", False)
+        quality = parsed.get("quality", "low")
+        issues = parsed.get("issues", [])
+        reason = parsed.get("reason", "")
+        
+        if is_valid:
+            message = f"✅ Valid book cover detected (Quality: {quality})"
+        else:
+            message = f"❌ Invalid image: {reason}"
+            if issues:
+                message += f"\nIssues: {', '.join(issues)}"
+        
+        return {
+            "is_valid": is_valid,
+            "quality": quality,
+            "issues": issues,
+            "message": message
+        }
+        
+    except json.JSONDecodeError:
+        return None
+    except Exception as e:
+        print(f"   ⚠️ Validation error: {str(e)[:100]}")
+        return None
+
+
 def validate_gemini_api_key() -> bool:
     """
     Validate that GEMINI_API_KEY is set.

@@ -10,7 +10,7 @@ from typing import Optional
 # Add BACKEND directory to path so imports work
 sys.path.insert(0, os.path.dirname(__file__))
 
-from gemini_service import extract_book_metadata_with_gemini, validate_gemini_api_key
+from gemini_service import extract_book_metadata_with_gemini, validate_gemini_api_key, validate_image_quality
 from database import create_table, insert_book, search_books, search_books_fuzzy, get_all_books, delete_all_books, update_book, get_books_with_ids
 from book_lookup import identify_book
 from auth import (
@@ -165,6 +165,38 @@ async def logout(current_user: dict = Depends(get_current_user)):
     }
 
 # ======================== BOOK UPLOAD (ADMIN ONLY) ========================
+
+@app.post("/validate-image/")
+async def validate_image(
+    image: UploadFile = File(...),
+    admin: dict = Depends(get_admin_user)
+):
+    """Validate image quality - Check if it's a real book cover and not unclear/false/unwanted"""
+    try:
+        print(f"\n🔍 IMAGE VALIDATION - Started by: {admin['username']}")
+        
+        # Save image temporarily
+        temp_path = os.path.join(UPLOAD_FOLDER, f"temp_{image.filename}")
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
+        
+        print(f"   📁 Temp image saved: {temp_path}")
+        
+        # Validate image quality
+        validation_result = validate_image_quality(temp_path)
+        
+        # Clean up temp file
+        try:
+            os.remove(temp_path)
+        except:
+            pass
+        
+        return validation_result
+        
+    except Exception as e:
+        print(f"❌ Validation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
 
 @app.post("/upload-book/")
 async def upload_book(

@@ -261,6 +261,34 @@ async function uploadBook(image, quantity, shelf) {
     }
 }
 
+async function validateImage(image) {
+    try {
+        const formData = new FormData();
+        formData.append("image", image);
+
+        const response = await fetch(`${API_URL}/validate-image/`, {
+            method: "POST",
+            headers: getAuthHeaders(),
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || "Validation failed");
+        }
+
+        return data;
+    } catch (error) {
+        return {
+            is_valid: false,
+            quality: "unknown",
+            issues: ["Validation service error"],
+            message: "❌ Could not validate image: " + error.message
+        };
+    }
+}
+
 async function searchBooks(query) {
     try {
         const response = await fetch(`${API_URL}/search-book/?query=${encodeURIComponent(query)}`);
@@ -497,6 +525,35 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        // Step 1: Validate image quality first
+        resultDiv.appendChild(createMessage("🔍 Validating image quality...", "loading"));
+        
+        const validation = await validateImage(image);
+        
+        resultDiv.innerHTML = "";
+        
+        // Check validation result
+        if (!validation.is_valid) {
+            // Image is invalid - show error with details
+            let errorMsg = validation.message || "❌ Image validation failed";
+            if (validation.issues && validation.issues.length > 0) {
+                errorMsg += "<br><strong>Issues found:</strong><br>" + validation.issues.map(i => "• " + i).join("<br>");
+            }
+            resultDiv.appendChild(createMessage(errorMsg, "error"));
+            return;
+        }
+
+        // Image is valid - show warning if quality is low
+        if (validation.quality === "low" || validation.quality === "medium") {
+            const warningMsg = `⚠️ Image quality is ${validation.quality}. Text may be hard to read. Continue?`;
+            if (!confirm(warningMsg)) {
+                resultDiv.innerHTML = "";
+                resultDiv.appendChild(createMessage("❌ Upload cancelled", "error"));
+                return;
+            }
+        }
+
+        // Step 2: Now proceed with upload
         resultDiv.appendChild(createMessage("⏳ Uploading and extracting...", "loading"));
 
         const result = await uploadBook(image, quantity, shelf);

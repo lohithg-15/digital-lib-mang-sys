@@ -928,6 +928,11 @@ input[type="file"] {
     margin-bottom: 30px;
     border: none;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    position: sticky;
+    top: 20px;
+    background: white;
+    z-index: 100;
+    border-radius: 16px;
 }
 
 .tab-buttons {
@@ -952,6 +957,7 @@ input[type="file"] {
 .tab-btn:hover {
     border-color: #667eea;
     color: #667eea;
+    transform: translateY(-2px);
 }
 
 .tab-btn.active {
@@ -964,6 +970,7 @@ input[type="file"] {
 .tab-content {
     display: none;
     animation: fadeIn 0.3s ease-in-out;
+    padding-top: 10px;
 }
 
 .tab-content.active {
