@@ -1,9 +1,9 @@
 @echo off
-REM A Digital Library Book Tracking and Management System - Startup Script
+REM Librarium — Digital Library Management System - Startup Script
 
 echo.
 echo ============================================================
-echo      DIGITAL LIBRARY BOOK TRACKING AND MANAGEMENT SYSTEM
+echo       LIBRARIUM - DIGITAL LIBRARY MANAGEMENT SYSTEM
 echo                    STARTUP SCRIPT
 echo ============================================================
 echo.
@@ -16,7 +16,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/4] Checking database...
+echo [1/3] Checking database...
 cd /d "%~dp0BACKEND"
 python -c "from database import get_all_books; books = get_all_books(); print(f'Database ready: {len(books)} books found')"
 
@@ -27,54 +27,47 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/4] Starting BACKEND (FastAPI on port 8000)...
-echo         Running: uvicorn main:app --reload
+echo [2/3] Starting BACKEND (FastAPI on port 8000)...
+echo         Running: uvicorn main:app --reload --host 127.0.0.1 --port 8000
 echo.
-start "Digital Library - BACKEND" cmd /k "cd /d %~dp0BACKEND && uvicorn main:app --reload"
+start "Librarium - BACKEND" cmd /k "cd /d %~dp0BACKEND && uvicorn main:app --reload --host 127.0.0.1 --port 8000"
 
 REM Wait for backend to start
-echo [3/4] Waiting for backend to start (10 seconds)...
+echo [3/3] Waiting for backend to start (10 seconds)...
 timeout /t 10 /nobreak
 
 echo.
-echo [4/4] Starting FRONTEND (HTTP Server on port 5500)...
-echo         Running: python -m http.server 5500
-echo.
-start "Digital Library - FRONTEND" cmd /k "cd /d %~dp0FRONTEND && python -m http.server 5500"
+echo Opening Frontend in browser...
+start "" "%~dp0Frontend\index.html"
 
 echo.
 echo ============================================================
-echo          ✅ DIGITAL LIBRARY SYSTEM IS STARTING
+echo          ✅ LIBRARIUM IS STARTING
 echo ============================================================
 echo.
 echo BACKEND:  http://127.0.0.1:8000
-echo FRONTEND: http://localhost:5500
-echo.
-echo Opening application in browser...
-timeout /t 3 /nobreak
-
-start http://localhost:5500
-
+echo FRONTEND: Open Frontend\index.html in your browser
 echo.
 echo ============================================================
 echo           💡 TIPS
 echo ============================================================
 echo.
-echo 1. Two new windows will open:
+echo 1. One new window will open:
 echo    - BACKEND window (Python/Uvicorn)
-echo    - FRONTEND window (HTTP Server)
 echo.
-echo 2. Keep both windows open while using the application
+echo 2. Keep the BACKEND window open while using the application
 echo.
 echo 3. To stop:
-echo    - Type Ctrl+C in both windows OR close them
+echo    - Type Ctrl+C in the BACKEND window OR close it
 echo.
 echo 4. If you see "Address already in use":
 echo    - Close the existing application
-echo    - Or change the port number (5500 or 8000)
+echo    - Or change the port number (8000)
 echo.
-echo 5. The browser will open automatically
-echo    If not, manually open: http://localhost:5500
+echo 5. The browser will open automatically with Frontend\index.html
+echo    If not, manually open: Frontend\index.html
+echo.
+echo 6. Login: admin / admin123 (or use Guest mode)
 echo.
 echo ============================================================
 echo.

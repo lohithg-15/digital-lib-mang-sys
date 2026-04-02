@@ -1,4 +1,4 @@
-# ⚡ Quick Start
+# ⚡ Quick Start — Librarium
 
 ## 1. Install dependencies
 
@@ -25,59 +25,66 @@ pip install -r requirements.txt
 - ✅ Unlimited daily usage
 - ✅ Perfect for personal/student projects
 
-## 3. Start backend (Terminal 1)
+## 3. Start backend
 
 ```powershell
 cd BACKEND
-uvicorn main:app --reload
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Wait for: `✅ Gemini API ready! Backend is fully initialized.`
 
-## 4. Start frontend (Terminal 2)
+## 4. Open app
 
-```powershell
-cd Frontend
-python -m http.server 5500
-```
+Open **`Frontend/index.html`** in your browser (double-click it).
 
-## 5. Open app
+On Windows: Double-click **`START_APP.bat`** to start everything automatically.
 
-http://localhost:5500  
-
-**Login:** `admin` / `admin123` — or **Continue as Customer** (no login).
+**Login:** `admin` / `admin123` — or click "Guest" tab → **Continue as Guest** (no login).
 
 ---
 
 ## What you can do
 
-**Admin Workflows:**
+**Admin Workflows (via Sidebar Navigation):**
 
-1. **Upload & Review:**
-   - Upload a book image
-   - System extracts title/author using **Google Gemini Vision API** (ChatGPT-level AI)
-   - Review extracted data in an editable form (yellow background)
+1. **🔍 Search:**
+   - Search books by title or author
+   - Typo-tolerant fuzzy search with "Did you mean?" suggestions
+   - Quick-search genre chips (Fiction, Science, History, etc.)
+
+2. **📤 Upload Image:**
+   - Upload a book cover image
+   - System extracts title/author using **Google Gemini Vision API**
+   - Review extracted data in an editable card (amber highlight)
    - Edit any field if Gemini made mistakes
    - Click **"Save to Database"** to confirm
    - OR Click **"Cancel"** to discard
 
-2. **Add Manually:**
+3. **✏️ Add Manually:**
    - Enter title, author, quantity, shelf location directly
+   - Live preview panel shows book card as you type
    - Click **"Add Book"** to save immediately
 
-3. **Manage & Edit:**
-   - Click **"Manage Books"** tab
-   - Click **"Load Books"** to see all books
-   - Click **"Edit"** button on any book
-   - Modify quantity/shelf/title/author
-   - Click **"Save"** to update database
+4. **📋 Manage Books:**
+   - Click **"Load Books"** to see the full catalog table
+   - Filter books with the inline search bar
+   - Click **"Edit"** button on any book → opens edit modal
+   - Modify quantity/shelf/title/author, click **"Save Changes"**
 
-**Customer:** Search by title or author (typo-tolerant; "Did you mean?" when applicable). No login needed.
+5. **🔧 Debug Tools:**
+   - View all books in database
+   - List all registered users
+   - Reset database (caution: deletes all books)
+
+**Customer (Guest):** Search by title or author. No login needed.
 
 ---
 
 ## Issues
 
 - **Clicks do nothing:** Ensure backend is running at http://127.0.0.1:8000/ and refresh (Ctrl+Shift+R). Check browser console (F12).  
-- **Backend won’t start:** Use Python 3.8+; install missing packages; stop other process (Ctrl+C).  - **Gemini API key error:** Verify `GEMINI_API_KEY` is set correctly in `BACKEND/.env` and is valid.  
-- **Extraction fails:** Check that book cover image is clear and text is readable. Try with a different image.- **Port in use:** Run backend on another port, e.g. `uvicorn main:app --port 8001`, and set `API_URL` in `Frontend/script.js` to `http://127.0.0.1:8001`.
+- **Backend won't start:** Use Python 3.8+; install missing packages; stop other process (Ctrl+C).  
+- **Gemini API key error:** Verify `GEMINI_API_KEY` is set correctly in `BACKEND/.env` and is valid.  
+- **Extraction fails:** Check that book cover image is clear and text is readable. Try with a different image.
+- **Port in use:** Run backend on another port, e.g. `uvicorn main:app --port 8001`, and set `API_URL` in `Frontend/script.js` to `http://127.0.0.1:8001`.
