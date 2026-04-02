@@ -1,194 +1,371 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digital Library Management System</title>
+    <title>Librarium — Digital Library Management System</title>
+    <meta name="description"
+        content="A beautiful digital library system with AI-powered book recognition, fuzzy search, and role-based access control.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
-<!-- Login Page (shown when not authenticated) -->
-<div id="loginContainer" class="login-page">
-    <div class="login-container-wrapper">
-        <div class="login-box">
-            <div class="login-header">
-                <div class="logo-icon">📚</div>
-                <h1>Digital Library</h1>
-                <p>Book Tracking & Management</p>
-            </div>
+    <!-- ============================================================
+     LOGIN PAGE
+     ============================================================ -->
+    <div id="loginContainer" class="login-page">
+        <div class="login-split">
 
-            <!-- Login Form -->
-            <div id="loginForm" class="login-form">
-                <h2>Select Access Type</h2>
+            <!-- Left brand panel -->
+            <div class="login-brand-panel">
+                <div class="brand-content">
+                    <span class="brand-logo">📚</span>
+                    <h1 class="brand-name">Librarium</h1>
+                    <p class="brand-tagline">A Digital Library Book Tracking &amp; Management System</p>
 
-                <div class="role-selector">
-                    <button class="role-btn active" data-role="admin">
-                        <span class="role-icon">⚙️</span>
-                        <span>Admin Login</span>
-                    </button>
-                    <button class="role-btn" data-role="customer">
-                        <span class="role-icon">🔍</span>
-                        <span>Customer Search</span>
-                    </button>
+                    <div class="brand-features">
+                        <div class="feat-item"><span class="feat-dot">●</span> AI-powered book cover recognition</div>
+                        <div class="feat-item"><span class="feat-dot">●</span> Typo-tolerant fuzzy search</div>
+                        <div class="feat-item"><span class="feat-dot">●</span> Role-based access control</div>
+                        <div class="feat-item"><span class="feat-dot">●</span> Manual &amp; automated cataloging</div>
+                    </div>
+
+                    <!-- Decorative shelf -->
+                    <div class="shelf-art">
+                        <div class="shelf-row">
+                            <div class="sbook" style="width:14px;height:52px;background:#8b6914"></div>
+                            <div class="sbook" style="width:11px;height:44px;background:#2d5a3d"></div>
+                            <div class="sbook" style="width:16px;height:58px;background:#1e2d50"></div>
+                            <div class="sbook" style="width:10px;height:40px;background:#8b2020"></div>
+                            <div class="sbook" style="width:13px;height:50px;background:#c8882a"></div>
+                            <div class="sbook" style="width:12px;height:46px;background:#3d3428"></div>
+                            <div class="sbook" style="width:15px;height:54px;background:#6b4c2a"></div>
+                            <div class="sbook" style="width:10px;height:42px;background:#2d5a3d"></div>
+                            <div class="sbook" style="width:14px;height:48px;background:#1e2d50"></div>
+                        </div>
+                        <div class="shelf-base"></div>
+                    </div>
+
+                    <div id="backendStatus" class="status-pill initializing">
+                        <span class="status-dot"></span> Checking backend…
+                    </div>
                 </div>
-
-                <form id="authForm">
-                    <div id="credentialsSection" style="display: block;">
-                        <div class="form-group">
-                            <label for="username">Username</label>
-                            <input type="text" id="username" placeholder="Enter your username" required />
-                        </div>
-                        <div class="form-group">
-                            <label for="password">Password</label>
-                            <input type="password" id="password" placeholder="Enter your password" required />
-                        </div>
-                        <button type="submit" class="btn-primary" id="loginBtn">Sign In</button>
-                    </div>
-
-                    <div id="customerLoginSection" style="display: none;">
-                        <p class="customer-message">Browse our library collection without an account</p>
-                        <button type="button" class="btn-primary" id="customerBtn">Continue as Guest</button>
-                    </div>
-                </form>
-
-                <div id="loginError" class="error-message" style="display: none;"></div>
             </div>
+
+            <!-- Right form panel -->
+            <div class="login-form-panel">
+                <div class="login-box">
+                    <h2 class="login-title">Welcome back</h2>
+                    <p class="login-sub">Sign in to access the library system</p>
+
+                    <!-- Role tabs -->
+                    <div class="role-tabs">
+                        <button class="role-tab active" data-role="admin">⚙️ Admin</button>
+                        <button class="role-tab" data-role="customer">🔍 Guest</button>
+                    </div>
+
+                    <!-- Auth form -->
+                    <form id="authForm">
+                        <div id="credentialsSection" style="display: block;">
+                            <div class="field-group">
+                                <label for="username">Username</label>
+                                <input type="text" id="username" placeholder="Enter your username" required>
+                            </div>
+                            <div class="field-group">
+                                <label for="password">Password</label>
+                                <div class="pass-wrap">
+                                    <input type="password" id="password" placeholder="Enter your password" required>
+                                    <button type="button" class="pass-toggle" id="passToggleBtn">👁</button>
+                                </div>
+                            </div>
+                            <div id="loginError" class="login-error" style="display:none"></div>
+                            <button type="submit" class="btn-signin" id="loginBtn">🔑 Sign In</button>
+                            <p class="login-hint">Default: admin / admin123</p>
+                        </div>
+
+                        <div id="customerLoginSection" style="display: none;">
+                            <div class="guest-info">
+                                <div class="guest-icon">🔍</div>
+                                <p>Browse and search the full library catalog without logging in.</p>
+                            </div>
+                            <button type="button" class="btn-signin" id="customerBtn">Continue as Guest →</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
         </div>
     </div>
-</div>
 
-<!-- Main App (shown after login/customer mode) -->
-<div id="appContainer" class="app-page" style="display: none;">
-    <div class="container">
-        <!-- Header with User Info & Logout -->
-        <div class="header">
-            <div class="header-left">
-                <h1>📚 A Digital Library Book Tracking and Management System</h1>
-            </div>
-            <div class="header-right">
-                <div class="user-info">
-                    <span id="userRole" class="user-badge"></span>
-                    <span id="userName" class="user-name"></span>
-                </div>
-                <button id="logoutBtn" class="btn-logout">🔓 Logout</button>
-            </div>
+    <!-- ============================================================
+     APP PAGE
+     ============================================================ -->
+    <div id="appContainer" class="app-page" style="display: none;">
+
+        <!-- Mobile top bar -->
+        <div class="mobile-topbar">
+            <button class="hamburger" id="hamburgerBtn">☰</button>
+            <span class="mobile-brand">📚 Librarium</span>
+            <button class="btn-logout-mobile" id="logoutBtnMobile">↩</button>
         </div>
 
-        <!-- Admin Section (Only visible if admin) -->
-        <div id="adminSection" style="display: none;">
-            <!-- Tab Selector -->
-            <div class="card tab-selector-card">
-                <div class="tab-buttons">
-                    <button class="tab-btn active" data-tab="upload-tab">📤 Upload Image</button>
-                    <button class="tab-btn" data-tab="manual-tab">✏️ Add Manually</button>
-                    <button class="tab-btn" data-tab="manage-tab">📋 Manage Books</button>
-                </div>
+        <!-- Sidebar overlay for mobile -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <span>📚</span>
+                <span class="sidebar-brand">Librarium</span>
             </div>
 
-            <!-- Tab 1: Upload Book Image -->
-            <div id="upload-tab" class="tab-content active">
-               <div class="card upload-card">
-                    <h2>📤 Upload Book</h2>
-                    <p class="card-subtitle">Add a new book: upload image and save</p>
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-section="search-section">🔍 Search</button>
+                <button class="nav-item admin-only" data-section="upload-section">📤 Upload Image</button>
+                <button class="nav-item admin-only" data-section="manual-section">✏️ Add Manually</button>
+                <button class="nav-item admin-only" data-section="manage-section">📋 Manage Books</button>
+                <button class="nav-item admin-only" data-section="debug-section">🔧 Debug Tools</button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-avatar" id="userAvatar">A</div>
+                <div class="user-info-text">
+                    <span class="user-name-text" id="userName">Admin</span>
+                    <span class="user-role-text" id="userRole">admin</span>
+                </div>
+                <button class="btn-logout" id="logoutBtn" title="Logout">↩</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+
+            <!-- ===== SEARCH SECTION ===== -->
+            <div id="search-section" class="content-section active">
+                <div class="section-header">
+                    <div>
+                        <h1 class="section-title">Search the Library</h1>
+                        <p class="section-sub">Find any book by title or author — supports typo-tolerant search</p>
+                    </div>
+                </div>
+
+                <div class="search-bar-wrap">
+                    <span class="search-bar-icon">🔍</span>
+                    <input type="text" class="search-input" id="searchQuery" placeholder="Search by title, author…"
+                        autocomplete="off">
+                    <button class="btn-search" id="searchBtn">Search</button>
+                </div>
+
+                <div class="category-chips">
+                    <span class="chips-label">Quick:</span>
+                    <button class="chip" data-query="Fiction">📖 Fiction</button>
+                    <button class="chip" data-query="Science">🔬 Science</button>
+                    <button class="chip" data-query="History">📜 History</button>
+                    <button class="chip" data-query="Programming">💻 Programming</button>
+                    <button class="chip" data-query="Mathematics">🔢 Math</button>
+                </div>
+
+                <div id="searchResult" class="search-result-area"></div>
+            </div>
+
+            <!-- ===== UPLOAD SECTION (Admin) ===== -->
+            <div id="upload-section" class="content-section">
+                <div class="section-header">
+                    <div>
+                        <h1 class="section-title">Upload Book Image</h1>
+                        <p class="section-sub">Upload a book cover image — AI will extract title and author
+                            automatically</p>
+                    </div>
+                </div>
+
+                <div class="form-panel">
                     <form id="uploadForm">
-                        <div class="form-group">
-                            <label for="image">Select Book Image:</label>
-                            <input type="file" id="image" accept="image/*" required />
+                        <div class="form-grid">
+                            <div class="field-group full">
+                                <label for="image">Book Cover Image <span class="req">*</span></label>
+                                <input type="file" id="image" accept="image/*" required>
+                            </div>
+                            <div class="field-group">
+                                <label for="quantity">Quantity <span class="req">*</span></label>
+                                <input type="number" id="quantity" placeholder="Number of copies" min="1" value="1"
+                                    required>
+                            </div>
+                            <div class="field-group">
+                                <label for="shelf">Shelf Location <span class="req">*</span></label>
+                                <input type="text" id="shelf" placeholder="e.g. A2, B3" required>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="quantity">Quantity:</label>
-                            <input type="number" id="quantity" placeholder="Number of copies" min="1" value="1" required />
-                        </div>
-                        <div class="form-group">
-                            <label for="shelf">Shelf Location:</label>
-                            <input type="text" id="shelf" placeholder="e.g. A2, B3, etc." required />
-                        </div>
-                        <div class="button-group">
-                            <button type="submit" class="btn-primary">📤 Upload Book</button>
-                            <button type="button" id="clearUploadBtn" class="btn-secondary">Clear</button>
-                        </div>
-                    </form>
-                    <div id="uploadResult" class="upload-result-container"></div>
-                </div>
-            </div>
-
-            <!-- Tab 2: Manual Book Entry -->
-            <div id="manual-tab" class="tab-content" style="display: none;">
-                <div class="card manual-entry-card">
-                    <h2>✏️ Add Book Manually</h2>
-                    <p class="card-subtitle">Enter book details without uploading an image</p>
-                    <form id="manualBookForm">
-                        <div class="form-group">
-                            <label for="manualTitle">Book Title: <span class="required">*</span></label>
-                            <input type="text" id="manualTitle" placeholder="Enter book title" required />
-                        </div>
-                        <div class="form-group">
-                            <label for="manualAuthor">Author: <span class="required">*</span></label>
-                            <input type="text" id="manualAuthor" placeholder="Enter author name" required />
-                        </div>
-                        <div class="form-group">
-                            <label for="manualQuantity">Quantity: <span class="required">*</span></label>
-                            <input type="number" id="manualQuantity" placeholder="Number of copies" min="1" value="1" required />
-                        </div>
-                        <div class="form-group">
-                            <label for="manualShelf">Shelf Location: <span class="required">*</span></label>
-                            <input type="text" id="manualShelf" placeholder="e.g. A2, B3, etc." required />
-                        </div>
-                        <div class="button-group">
-                            <button type="submit" class="btn-primary">➕ Add Book</button>
-                            <button type="reset" class="btn-secondary">Clear</button>
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary" id="clearUploadBtn">Clear</button>
+                            <button type="submit" class="btn-primary">📤 Upload &amp; Extract</button>
                         </div>
                     </form>
-                    <div id="manualBookResult" class="upload-result-container"></div>
+                    <div id="uploadResult" class="result-area"></div>
                 </div>
             </div>
 
-            <!-- Tab 3: Manage Books -->
-            <div id="manage-tab" class="tab-content" style="display: none;">
-                <div class="card manage-books-card">
-                    <h2>📋 Manage Books</h2>
-                    <p class="card-subtitle">View, edit quantity, and change shelf location</p>
-                    <div class="button-group" style="margin-bottom: 20px;">
-                        <button id="loadBooksBtn" class="btn-primary">📚 Load Books</button>
+            <!-- ===== MANUAL ADD SECTION (Admin) ===== -->
+            <div id="manual-section" class="content-section">
+                <div class="section-header">
+                    <div>
+                        <h1 class="section-title">Add New Book</h1>
+                        <p class="section-sub">Manually enter book details to add to the library catalog</p>
                     </div>
-                    <div id="booksList" class="books-list-container" style="display: none;">
-                        <div id="booksTable"></div>
+                </div>
+
+                <div class="add-book-layout">
+                    <!-- Preview panel -->
+                    <div class="preview-panel">
+                        <div class="preview-label">Live Preview</div>
+                        <div class="preview-card">
+                            <div class="preview-cover">
+                                <div class="cover-placeholder-inner" id="previewCoverInner">
+                                    <span style="font-size:1.5rem">📖</span>
+                                    <span>Cover Preview</span>
+                                </div>
+                            </div>
+                            <div class="preview-info">
+                                <div class="preview-title" id="previewTitle">Book Title</div>
+                                <div class="preview-author" id="previewAuthor">by Author</div>
+                                <div class="preview-tags">
+                                    <span class="preview-tag qty" id="previewQty">Qty: 1</span>
+                                    <span class="preview-tag shelf" id="previewShelf">Shelf: —</span>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="preview-tip">Fill in the form to see a live preview of the book card.</p>
                     </div>
-                    <div id="manageBooksResult" class="upload-result-container"></div>
+
+                    <!-- Form panel -->
+                    <div class="form-panel">
+                        <form id="manualBookForm">
+                            <div class="form-grid">
+                                <div class="field-group">
+                                    <label for="manualTitle">Book Title <span class="req">*</span></label>
+                                    <input type="text" id="manualTitle" placeholder="Enter book title" required>
+                                </div>
+                                <div class="field-group">
+                                    <label for="manualAuthor">Author <span class="req">*</span></label>
+                                    <input type="text" id="manualAuthor" placeholder="Enter author name" required>
+                                </div>
+                                <div class="field-group">
+                                    <label for="manualQuantity">Quantity <span class="req">*</span></label>
+                                    <input type="number" id="manualQuantity" placeholder="Copies" min="1" value="1"
+                                        required>
+                                </div>
+                                <div class="field-group">
+                                    <label for="manualShelf">Shelf Location <span class="req">*</span></label>
+                                    <input type="text" id="manualShelf" placeholder="e.g. A2, B3" required>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="reset" class="btn-secondary">Clear</button>
+                                <button type="submit" class="btn-primary">➕ Add Book</button>
+                            </div>
+                        </form>
+                        <div id="manualBookResult" class="result-area"></div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Debug Section -->
-            <div class="card debug-card" style="margin-top: 20px;">
-                <h2>🔧 Admin Tools</h2>
-                <div class="debug-buttons">
-                    <button id="debugBtn" class="btn-debug">📊 View All Books</button>
-                    <button id="resetDbBtn" class="btn-danger">🗑️ Reset Database</button>
-                    <button id="listUsersBtn" class="btn-debug">👥 List Users</button>
+            <!-- ===== MANAGE BOOKS SECTION (Admin) ===== -->
+            <div id="manage-section" class="content-section">
+                <div class="section-header">
+                    <div>
+                        <h1 class="section-title">Manage Books</h1>
+                        <p class="section-sub">View, search, and edit the entire library catalog</p>
+                    </div>
+                    <button class="btn-primary" id="loadBooksBtn">📚 Load Books</button>
                 </div>
+
+                <div class="table-search-bar">
+                    <span>🔍</span>
+                    <input type="text" id="manageSearchInput" placeholder="Filter books…">
+                </div>
+
+                <div id="booksList" class="table-wrap" style="display:none">
+                    <div id="booksTable"></div>
+                </div>
+                <div id="manageBooksResult" class="result-area"></div>
+            </div>
+
+            <!-- ===== DEBUG SECTION (Admin) ===== -->
+            <div id="debug-section" class="content-section">
+                <div class="section-header">
+                    <div>
+                        <h1 class="section-title">Debug Tools</h1>
+                        <p class="section-sub">Administrative utilities for system management</p>
+                    </div>
+                </div>
+
+                <div class="debug-grid">
+                    <div class="debug-card">
+                        <div class="debug-icon">📚</div>
+                        <h3>All Books</h3>
+                        <p>View every book stored in the database.</p>
+                        <button class="btn-primary" id="debugBtn">View Books</button>
+                    </div>
+                    <div class="debug-card">
+                        <div class="debug-icon">👥</div>
+                        <h3>Users</h3>
+                        <p>List all registered users and their roles.</p>
+                        <button class="btn-primary" id="listUsersBtn">View Users</button>
+                    </div>
+                    <div class="debug-card danger-card">
+                        <div class="debug-icon">⚠️</div>
+                        <h3>Reset Database</h3>
+                        <p>Delete ALL books from database. Cannot be undone.</p>
+                        <button class="btn-danger" id="resetDbBtn">🗑️ Reset</button>
+                    </div>
+                </div>
+
                 <div id="debugResult" class="debug-result"></div>
             </div>
-        </div>
 
-        <!-- Customer Section (Search - visible to all) -->
-        <div id="customerSection" style="display: block;">
-            <div class="card search-card">
-                <h2>🔍 Search Book</h2>
-                <p class="card-subtitle">Find books by title or author</p>
-                <div class="search-form">
-                    <label for="searchQuery">Enter Book Name or Author:</label>
-                    <input type="text" id="searchQuery" placeholder="Type here... e.g., 'Gatsby', 'Harper', '1984'" autocomplete="off" />
-                    <button id="searchBtn" class="btn-primary">🔍 Search</button>
+        </main>
+    </div>
+
+    <!-- ===== EDIT MODAL ===== -->
+    <div id="editModal" class="modal-overlay" style="display:none">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>✏️ Edit Book</h3>
+                <button class="modal-close" id="modalCloseBtn">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="field-group">
+                    <label for="edit-title">Title</label>
+                    <input type="text" id="edit-title">
                 </div>
-                <div id="searchResult" class="results-container"></div>
+                <div class="field-group">
+                    <label for="edit-author">Author</label>
+                    <input type="text" id="edit-author">
+                </div>
+                <div class="field-group">
+                    <label for="edit-quantity">Quantity</label>
+                    <input type="number" id="edit-quantity" min="1">
+                </div>
+                <div class="field-group">
+                    <label for="edit-shelf">Shelf Location</label>
+                    <input type="text" id="edit-shelf">
+                </div>
+                <div id="editModalResult" class="result-area"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="modalCancelBtn">Cancel</button>
+                <button class="btn-primary" id="modalSaveBtn">💾 Save Changes</button>
             </div>
         </div>
     </div>
-</div>
 
-<div id="backendStatus" class="status-indicator initializing">⏳ Connecting...</div>
-
-<script src="script.js"></script>
+    <script src="script.js"></script>
 </body>
+
 </html>

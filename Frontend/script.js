@@ -5,7 +5,8 @@ let appState = {
     token: null,
     user: null,
     userRole: null,
-    backendStatus: { running: false, authReady: false, geminiReady: false }
+    backendStatus: { running: false, authReady: false, geminiReady: false },
+    editingBookId: null
 };
 
 // ====================== AUTHENTICATION ======================
@@ -43,7 +44,6 @@ async function login(username, password) {
             throw new Error(data.detail || "Login failed");
         }
 
-        // Save token and user info
         saveToken(data.access_token);
         appState.user = data.user;
         appState.userRole = data.user.role;
@@ -65,45 +65,7 @@ async function logout() {
     showLoginPage();
 }
 
-// ====================== UI FUNCTIONS ======================
-
-function showLoginPage() {
-    document.getElementById("loginContainer").style.display = "block";
-    document.getElementById("appContainer").style.display = "none";
-}
-
-function showAppPage() {
-    document.getElementById("loginContainer").style.display = "none";
-    document.getElementById("appContainer").style.display = "block";
-
-    // Show/hide sections based on role
-    const adminSection = document.getElementById("adminSection");
-    const customerSection = document.getElementById("customerSection");
-
-    if (appState.userRole === "admin") {
-        adminSection.style.display = "block";
-    } else {
-        adminSection.style.display = "none";
-    }
-    customerSection.style.display = "block";
-
-    // Update header
-    const roleEl = document.getElementById("userRole");
-    const nameEl = document.getElementById("userName");
-
-    if (appState.userRole === "admin") {
-        roleEl.textContent = "🏪 Admin";
-        roleEl.className = "user-badge admin";
-        // Show username in a nice format, capitalize first letter
-        const username = appState.user.username || "User";
-        const displayName = username.charAt(0).toUpperCase() + username.slice(1);
-        nameEl.textContent = displayName;
-    } else {
-        roleEl.textContent = "👤 Customer";
-        roleEl.className = "user-badge customer";
-        nameEl.textContent = "Guest";
-    }
-}
+// ====================== UI HELPERS ======================
 
 function escapeHtml(str) {
     if (str == null || str === undefined) return "";
@@ -114,78 +76,90 @@ function escapeHtml(str) {
 
 function createMessage(text, type) {
     const msgDiv = document.createElement("div");
-    msgDiv.className = `message ${type}-message`;
+    msgDiv.className = `msg ${type}`;
     msgDiv.innerHTML = text;
     return msgDiv;
 }
 
-function showBookEditForm(book, allBooks, tableDiv, resultDiv) {
-    // Replace the table with the edit form
-    const editFormHtml = `
-        <div class="book-edit-row">
-            <div class="edit-field">
-                <label>Title:</label>
-                <input type="text" id="edit-title" value="${escapeHtml(book.title)}" />
-            </div>
-            <div class="edit-field">
-                <label>Author:</label>
-                <input type="text" id="edit-author" value="${escapeHtml(book.author)}" />
-            </div>
-            <div class="edit-field">
-                <label>Quantity:</label>
-                <input type="number" id="edit-quantity" value="${book.quantity}" min="1" />
-            </div>
-            <div class="edit-field">
-                <label>Shelf:</label>
-                <input type="text" id="edit-shelf" value="${escapeHtml(book.shelf)}" />
-            </div>
-            <div class="edit-actions">
-                <button class="btn-save-edit">💾 Save</button>
-                <button class="btn-cancel-edit">❌ Cancel</button>
-            </div>
-        </div>
-    `;
-    tableDiv.innerHTML = editFormHtml;
+// Deterministic color for book spines based on title hash
+function getSpineColor(title) {
+    const colors = [
+        '#8b6914', '#2d5a3d', '#1e2d50', '#8b2020', '#6b4c2a',
+        '#4a3728', '#2c1f0a', '#3d5a80', '#7a3b2e', '#4a6741',
+        '#5c3d2e', '#2e4057', '#6a4c93', '#1a535c', '#8b4513'
+    ];
+    let hash = 0;
+    for (let i = 0; i < title.length; i++) {
+        hash = title.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+}
 
-    // Save button handler
-    tableDiv.querySelector(".btn-save-edit").addEventListener("click", async () => {
-        const title = document.getElementById("edit-title").value.trim();
-        const author = document.getElementById("edit-author").value.trim();
-        const quantity = document.getElementById("edit-quantity").value;
-        const shelf = document.getElementById("edit-shelf").value.trim();
+// Availability badge text and class
+function getAvailBadge(qty) {
+    if (qty <= 0) return { text: 'Out', cls: 'out' };
+    if (qty <= 2) return { text: `${qty} left`, cls: 'low' };
+    return { text: 'Available', cls: 'available' };
+}
 
-        if (title.length < 2 || author.length < 2 || quantity < 1 || !shelf) {
-            resultDiv.innerHTML = "";
-            resultDiv.appendChild(createMessage("❌ Please fill in all fields correctly", "error"));
-            return;
-        }
+// ====================== UI NAVIGATION ======================
 
-        resultDiv.innerHTML = "⏳ Updating...";
+function showLoginPage() {
+    document.getElementById("loginContainer").style.display = "block";
+    document.getElementById("appContainer").style.display = "none";
+}
 
-        const result = await updateBookDetails(book.id, title, author, quantity, shelf);
+function showAppPage() {
+    document.getElementById("loginContainer").style.display = "none";
+    document.getElementById("appContainer").style.display = "flex";
 
-        resultDiv.innerHTML = "";
-
-        if (result.success) {
-            resultDiv.appendChild(createMessage("✅ Book updated successfully!", "success"));
-            // Reload the books list
-            setTimeout(() => {
-                document.getElementById("loadBooksBtn").click();
-            }, 1000);
-        } else {
-            resultDiv.appendChild(createMessage(`❌ ${result.error}`, "error"));
-            // Show edit form again
-            setTimeout(() => {
-                showBookEditForm(book, allBooks, tableDiv, resultDiv);
-            }, 1000);
-        }
+    // Show/hide admin-only nav items
+    const adminItems = document.querySelectorAll(".admin-only");
+    adminItems.forEach(item => {
+        item.style.display = appState.userRole === "admin" ? "flex" : "none";
     });
 
-    // Cancel button handler
-    tableDiv.querySelector(".btn-cancel-edit").addEventListener("click", () => {
-        // Reload the books list
-        document.getElementById("loadBooksBtn").click();
-    });
+    // Update sidebar footer user info
+    const username = appState.user ? appState.user.username : "User";
+    const displayName = username.charAt(0).toUpperCase() + username.slice(1);
+    document.getElementById("userName").textContent = displayName;
+    document.getElementById("userRole").textContent = appState.userRole || "user";
+    document.getElementById("userAvatar").textContent = displayName.charAt(0).toUpperCase();
+
+    // Navigate to search by default
+    navigateToSection("search-section");
+}
+
+function navigateToSection(sectionId) {
+    // Hide all sections
+    document.querySelectorAll(".content-section").forEach(s => s.classList.remove("active"));
+    // Deactivate all nav items
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+
+    // Show selected section
+    const section = document.getElementById(sectionId);
+    if (section) section.classList.add("active");
+
+    // Activate nav item
+    const navItem = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
+    if (navItem) navItem.classList.add("active");
+
+    // Close mobile sidebar
+    closeSidebar();
+}
+
+function toggleSidebar() {
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("sidebarOverlay");
+    sidebar.classList.toggle("open");
+    overlay.classList.toggle("show");
+}
+
+function closeSidebar() {
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("sidebarOverlay");
+    if (sidebar) sidebar.classList.remove("open");
+    if (overlay) overlay.classList.remove("show");
 }
 
 // ====================== BACKEND STATUS ======================
@@ -213,14 +187,14 @@ function updateStatusIndicator() {
     if (!statusDiv) return;
 
     if (!appState.backendStatus.running) {
-        statusDiv.innerHTML = "❌ Backend Offline";
-        statusDiv.className = "status-indicator offline";
+        statusDiv.innerHTML = '<span class="status-dot"></span> Backend Offline';
+        statusDiv.className = "status-pill offline";
     } else if (!appState.backendStatus.geminiReady) {
-        statusDiv.innerHTML = "⏳ Initializing Gemini API...";
-        statusDiv.className = "status-indicator initializing";
+        statusDiv.innerHTML = '<span class="status-dot"></span> Initializing Gemini…';
+        statusDiv.className = "status-pill initializing";
     } else {
-        statusDiv.innerHTML = "✅ Backend Ready";
-        statusDiv.className = "status-indicator ready";
+        statusDiv.innerHTML = '<span class="status-dot"></span> Backend Ready';
+        statusDiv.className = "status-pill ready";
     }
 }
 
@@ -462,16 +436,92 @@ async function saveExtractedBook(title, author, quantity, shelf) {
     }
 }
 
+// ====================== BOOK CARD RENDERING ======================
+
+function renderBookCard(book, index) {
+    const badge = getAvailBadge(book.quantity);
+    const spineColor = getSpineColor(book.title || "");
+    const delay = index * 0.06;
+
+    return `
+        <div class="book-card" style="animation-delay:${delay}s">
+            <div class="book-cover-area">
+                <div class="book-spine" style="background:${spineColor}">
+                    ${escapeHtml((book.title || "").substring(0, 30))}
+                </div>
+                <span class="avail-badge ${badge.cls}">${badge.text}</span>
+            </div>
+            <div class="book-card-body">
+                <div class="book-card-title">${escapeHtml(book.title)}</div>
+                <div class="book-card-author">by ${escapeHtml(book.author)}</div>
+                <div class="book-card-tags">
+                    <span class="book-tag">📦 Qty: ${book.quantity}</span>
+                    <span class="book-tag shelf">📍 ${escapeHtml(book.shelf)}</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// ====================== EDIT MODAL ======================
+
+function showEditModal(book) {
+    appState.editingBookId = book.id;
+    document.getElementById("edit-title").value = book.title || "";
+    document.getElementById("edit-author").value = book.author || "";
+    document.getElementById("edit-quantity").value = book.quantity || 1;
+    document.getElementById("edit-shelf").value = book.shelf || "";
+    document.getElementById("editModalResult").innerHTML = "";
+    document.getElementById("editModal").style.display = "flex";
+}
+
+function closeEditModal() {
+    document.getElementById("editModal").style.display = "none";
+    appState.editingBookId = null;
+}
+
+// ====================== PREVIEW UPDATE ======================
+
+function updatePreview() {
+    const title = document.getElementById("manualTitle").value || "Book Title";
+    const author = document.getElementById("manualAuthor").value || "Author";
+    const qty = document.getElementById("manualQuantity").value || "1";
+    const shelf = document.getElementById("manualShelf").value || "—";
+
+    document.getElementById("previewTitle").textContent = title;
+    document.getElementById("previewAuthor").textContent = `by ${author}`;
+    document.getElementById("previewQty").textContent = `Qty: ${qty}`;
+    document.getElementById("previewShelf").textContent = `Shelf: ${shelf}`;
+
+    // Update spine preview color
+    const coverInner = document.getElementById("previewCoverInner");
+    if (title !== "Book Title") {
+        const color = getSpineColor(title);
+        coverInner.innerHTML = `<div class="book-spine" style="background:${color};width:60px;height:90px;font-size:0.6rem">${escapeHtml(title.substring(0, 20))}</div>`;
+    }
+}
+
+// ====================== MANAGE TABLE FILTER ======================
+
+function filterManageTable(query) {
+    const rows = document.querySelectorAll("#booksTable .books-table tbody tr");
+    const q = query.toLowerCase();
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(q) ? "" : "none";
+    });
+}
+
 // ====================== EVENT LISTENERS ======================
 
 document.addEventListener("DOMContentLoaded", () => {
     checkBackendStatus();
     setInterval(checkBackendStatus, 5000);
 
-    // Role selector buttons
-    document.querySelectorAll(".role-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-            document.querySelectorAll(".role-btn").forEach(b => b.classList.remove("active"));
+    // ===== LOGIN ROLE TABS =====
+    document.querySelectorAll(".role-tab").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".role-tab").forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
 
             const role = btn.dataset.role;
@@ -480,7 +530,20 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Login form
+    // ===== PASSWORD TOGGLE =====
+    document.getElementById("passToggleBtn").addEventListener("click", () => {
+        const passInput = document.getElementById("password");
+        const btn = document.getElementById("passToggleBtn");
+        if (passInput.type === "password") {
+            passInput.type = "text";
+            btn.textContent = "🙈";
+        } else {
+            passInput.type = "password";
+            btn.textContent = "👁";
+        }
+    });
+
+    // ===== LOGIN FORM =====
     document.getElementById("authForm").addEventListener("submit", async (e) => {
         e.preventDefault();
 
@@ -498,7 +561,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Customer button
+    // ===== CUSTOMER BUTTON =====
     document.getElementById("customerBtn").addEventListener("click", async () => {
         const result = await loginAsCustomer();
         if (result.success) {
@@ -506,8 +569,95 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Logout button
+    // ===== LOGOUT =====
     document.getElementById("logoutBtn").addEventListener("click", logout);
+    document.getElementById("logoutBtnMobile").addEventListener("click", logout);
+
+    // ===== SIDEBAR NAVIGATION =====
+    document.querySelectorAll(".nav-item").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const sectionId = btn.dataset.section;
+            if (sectionId) navigateToSection(sectionId);
+        });
+    });
+
+    // ===== MOBILE HAMBURGER =====
+    document.getElementById("hamburgerBtn").addEventListener("click", toggleSidebar);
+    document.getElementById("sidebarOverlay").addEventListener("click", closeSidebar);
+
+    // ===== QUICK SEARCH CHIPS =====
+    document.querySelectorAll(".chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+            const query = chip.dataset.query;
+            if (query) {
+                document.getElementById("searchQuery").value = query;
+                document.getElementById("searchBtn").click();
+            }
+        });
+    });
+
+    // ===== CUSTOMER SEARCH =====
+    document.getElementById("searchBtn").addEventListener("click", async () => {
+        const query = document.getElementById("searchQuery").value;
+        const resultDiv = document.getElementById("searchResult");
+        resultDiv.innerHTML = "";
+
+        if (!query.trim()) {
+            resultDiv.appendChild(createMessage("Please enter a search query", "error"));
+            return;
+        }
+
+        resultDiv.appendChild(createMessage("🔍 Searching…", "loading"));
+
+        const result = await searchBooks(query);
+
+        resultDiv.innerHTML = "";
+
+        if (result.success) {
+            if (result.data.count === 0) {
+                resultDiv.innerHTML = `
+                    <div class="state-box">
+                        <div class="s-icon">📭</div>
+                        <div class="s-title">No books found</div>
+                        <div class="s-msg">Try a different search term or check for typos.</div>
+                    </div>
+                `;
+            } else {
+                // "Did you mean?" suggestion
+                if (result.data.did_you_mean) {
+                    const dymDiv = document.createElement("div");
+                    dymDiv.className = "did-you-mean";
+                    dymDiv.innerHTML = `🔎 Did you mean: <strong>${escapeHtml(result.data.did_you_mean)}</strong>?`;
+                    resultDiv.appendChild(dymDiv);
+                }
+
+                // Result count
+                const countDiv = document.createElement("div");
+                countDiv.className = "result-count";
+                countDiv.textContent = `Found ${result.data.count} book(s)`;
+                resultDiv.appendChild(countDiv);
+
+                // Book cards grid
+                const gridDiv = document.createElement("div");
+                gridDiv.className = "books-grid";
+
+                result.data.books.forEach((book, idx) => {
+                    gridDiv.innerHTML += renderBookCard(book, idx);
+                });
+
+                resultDiv.appendChild(gridDiv);
+            }
+        } else {
+            resultDiv.appendChild(createMessage(`❌ ${result.error}`, "error"));
+        }
+    });
+
+    // Search on Enter key
+    document.getElementById("searchQuery").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+            document.getElementById("searchBtn").click();
+        }
+    });
 
     // ===== ADMIN UPLOAD =====
     document.getElementById("uploadForm").addEventListener("submit", async (e) => {
@@ -525,16 +675,14 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        // Step 1: Validate image quality first
-        resultDiv.appendChild(createMessage("🔍 Validating image quality...", "loading"));
-        
+        // Step 1: Validate image quality
+        resultDiv.appendChild(createMessage("🔍 Validating image quality…", "loading"));
+
         const validation = await validateImage(image);
-        
+
         resultDiv.innerHTML = "";
-        
-        // Check validation result
+
         if (!validation.is_valid) {
-            // Image is invalid - show error with details
             let errorMsg = validation.message || "❌ Image validation failed";
             if (validation.issues && validation.issues.length > 0) {
                 errorMsg += "<br><strong>Issues found:</strong><br>" + validation.issues.map(i => "• " + i).join("<br>");
@@ -543,7 +691,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        // Image is valid - show warning if quality is low
+        // Warning for low quality
         if (validation.quality === "low" || validation.quality === "medium") {
             const warningMsg = `⚠️ Image quality is ${validation.quality}. Text may be hard to read. Continue?`;
             if (!confirm(warningMsg)) {
@@ -553,46 +701,46 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
 
-        // Step 2: Now proceed with upload
-        resultDiv.appendChild(createMessage("⏳ Uploading and extracting...", "loading"));
+        // Step 2: Upload and extract
+        resultDiv.appendChild(createMessage("⏳ Uploading and extracting…", "loading"));
 
         const result = await uploadBook(image, quantity, shelf);
 
         if (result.success) {
             resultDiv.innerHTML = "";
-            
-            // Show extracted data in EDITABLE form
-            const editFormDiv = document.createElement("div");
-            editFormDiv.className = "upload-extraction-card";
-            editFormDiv.innerHTML = `
-                <div class="upload-result-header">
-                    <span class="upload-result-success-icon">📋</span>
-                    <h3>Extracted Data - Please Review & Edit</h3>
+
+            // Show extracted data in editable card
+            const editCard = document.createElement("div");
+            editCard.className = "extraction-card review-card";
+            editCard.innerHTML = `
+                <div class="extraction-header">
+                    <span class="icon">📋</span>
+                    <h3>Extracted Data — Please Review & Edit</h3>
                 </div>
-                <div class="book-edit-row">
-                    <div class="edit-field">
-                        <label>Title:</label>
-                        <input type="text" id="extract-title" value="${escapeHtml(result.data.title)}" />
+                <div class="edit-extraction-grid">
+                    <div class="field-group">
+                        <label for="extract-title">Title</label>
+                        <input type="text" id="extract-title" value="${escapeHtml(result.data.title)}">
                     </div>
-                    <div class="edit-field">
-                        <label>Author:</label>
-                        <input type="text" id="extract-author" value="${escapeHtml(result.data.author)}" />
+                    <div class="field-group">
+                        <label for="extract-author">Author</label>
+                        <input type="text" id="extract-author" value="${escapeHtml(result.data.author)}">
                     </div>
-                    <div class="edit-field">
-                        <label>Quantity:</label>
-                        <input type="number" id="extract-quantity" value="${quantity}" min="1" />
+                    <div class="field-group">
+                        <label for="extract-quantity">Quantity</label>
+                        <input type="number" id="extract-quantity" value="${quantity}" min="1">
                     </div>
-                    <div class="edit-field">
-                        <label>Shelf:</label>
-                        <input type="text" id="extract-shelf" value="${escapeHtml(shelf)}" />
+                    <div class="field-group">
+                        <label for="extract-shelf">Shelf</label>
+                        <input type="text" id="extract-shelf" value="${escapeHtml(shelf)}">
                     </div>
-                    <div class="edit-actions">
-                        <button class="btn-save-edit" id="saveExtractedBtn">💾 Save to Database</button>
-                        <button class="btn-cancel-edit" id="cancelExtractedBtn">❌ Cancel</button>
+                    <div class="edit-extraction-actions">
+                        <button class="btn-secondary" id="cancelExtractedBtn">Cancel</button>
+                        <button class="btn-primary" id="saveExtractedBtn">💾 Save to Database</button>
                     </div>
                 </div>
             `;
-            resultDiv.appendChild(editFormDiv);
+            resultDiv.appendChild(editCard);
 
             // Save button handler
             document.getElementById("saveExtractedBtn").addEventListener("click", async () => {
@@ -601,14 +749,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 const qty = document.getElementById("extract-quantity").value;
                 const sh = document.getElementById("extract-shelf").value.trim();
 
-                // Validate
                 if (title.length < 2 || author.length < 2 || qty < 1 || !sh) {
                     resultDiv.innerHTML = "";
                     resultDiv.appendChild(createMessage("❌ Please fill in all fields correctly", "error"));
                     return;
                 }
 
-                resultDiv.innerHTML = "⏳ Saving to database...";
+                resultDiv.innerHTML = "";
+                resultDiv.appendChild(createMessage("⏳ Saving to database…", "loading"));
 
                 const saveResult = await saveExtractedBook(title, author, parseInt(qty), sh);
 
@@ -616,28 +764,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 if (saveResult.success) {
                     const successCard = document.createElement("div");
-                    successCard.className = "upload-result-card";
+                    successCard.className = "extraction-card success-card";
                     successCard.innerHTML = `
-                        <div class="upload-result-header">
-                            <span class="upload-result-success-icon">✅</span>
+                        <div class="extraction-header">
+                            <span class="icon">✅</span>
                             <h3>Book Saved Successfully!</h3>
                         </div>
-                        <div class="upload-result-details">
-                            <div class="upload-detail-box">
-                                <div class="upload-detail-label">📖 Title</div>
-                                <div class="upload-detail-value">${escapeHtml(title)}</div>
+                        <div class="extraction-details">
+                            <div class="extraction-detail">
+                                <div class="extraction-detail-label">📖 Title</div>
+                                <div class="extraction-detail-value">${escapeHtml(title)}</div>
                             </div>
-                            <div class="upload-detail-box">
-                                <div class="upload-detail-label">👤 Author</div>
-                                <div class="upload-detail-value">${escapeHtml(author)}</div>
+                            <div class="extraction-detail">
+                                <div class="extraction-detail-label">👤 Author</div>
+                                <div class="extraction-detail-value">${escapeHtml(author)}</div>
                             </div>
-                            <div class="upload-detail-box">
-                                <div class="upload-detail-label">📦 Quantity</div>
-                                <div class="upload-detail-value">${qty}</div>
+                            <div class="extraction-detail">
+                                <div class="extraction-detail-label">📦 Quantity</div>
+                                <div class="extraction-detail-value">${qty}</div>
                             </div>
-                            <div class="upload-detail-box">
-                                <div class="upload-detail-label">📍 Shelf</div>
-                                <div class="upload-detail-value">${escapeHtml(sh)}</div>
+                            <div class="extraction-detail">
+                                <div class="extraction-detail-label">📍 Shelf</div>
+                                <div class="extraction-detail-value">${escapeHtml(sh)}</div>
                             </div>
                         </div>
                     `;
@@ -662,83 +810,6 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("clearUploadBtn").addEventListener("click", () => {
         document.getElementById("uploadForm").reset();
         document.getElementById("uploadResult").innerHTML = "";
-    });
-
-    // ===== CUSTOMER SEARCH =====
-    document.getElementById("searchBtn").addEventListener("click", async () => {
-        const query = document.getElementById("searchQuery").value;
-        const resultDiv = document.getElementById("searchResult");
-        resultDiv.innerHTML = "";
-
-        if (!query.trim()) {
-            resultDiv.appendChild(createMessage("❌ Please enter a search query", "error"));
-            return;
-        }
-
-        resultDiv.appendChild(createMessage("🔍 Searching...", "loading"));
-
-        const result = await searchBooks(query);
-
-        resultDiv.innerHTML = "";
-
-        if (result.success) {
-            if (result.data.count === 0) {
-                resultDiv.appendChild(createMessage("📭 No books found", "info"));
-            } else {
-                // Show "Did you mean?" when fuzzy match was used (typo-tolerant search)
-                if (result.data.did_you_mean) {
-                    const didYouMeanDiv = document.createElement("div");
-                    didYouMeanDiv.className = "did-you-mean";
-                    didYouMeanDiv.innerHTML = `🔎 Did you mean: <strong>${escapeHtml(result.data.did_you_mean)}</strong>?`;
-                    resultDiv.appendChild(didYouMeanDiv);
-                }
-                const booksDiv = document.createElement("div");
-                booksDiv.className = "books-list";
-
-                result.data.books.forEach(book => {
-                    const bookCard = document.createElement("div");
-                    bookCard.className = "book-card";
-                    bookCard.innerHTML = `
-                        <div class="book-header">
-                            <h3>${escapeHtml(book.title)}</h3>
-                            <span class="book-qty">Qty: ${book.quantity}</span>
-                        </div>
-                        <p><strong>Author:</strong> ${escapeHtml(book.author)}</p>
-                        <p><strong>Location:</strong> Shelf ${escapeHtml(book.shelf)}</p>
-                    `;
-                    booksDiv.appendChild(bookCard);
-                });
-
-                resultDiv.appendChild(booksDiv);
-            }
-        } else {
-            resultDiv.appendChild(createMessage(`❌ ${result.error}`, "error"));
-        }
-    });
-
-    // Search on Enter key
-    document.getElementById("searchQuery").addEventListener("keypress", (e) => {
-        if (e.key === "Enter") {
-            document.getElementById("searchBtn").click();
-        }
-    });
-
-    // ===== TAB SWITCHING =====
-    document.querySelectorAll(".tab-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-            // Remove active class from all tabs
-            document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-            document.querySelectorAll(".tab-content").forEach(tc => tc.classList.remove("active"));
-            
-            // Add active class to clicked tab
-            btn.classList.add("active");
-            const tabId = btn.getAttribute("data-tab");
-            const tabContent = document.getElementById(tabId);
-            if (tabContent) {
-                tabContent.classList.add("active");
-                tabContent.style.display = "block";
-            }
-        });
     });
 
     // ===== MANUAL BOOK ENTRY =====
@@ -771,43 +842,55 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        resultDiv.appendChild(createMessage("⏳ Adding book...", "loading"));
+        resultDiv.appendChild(createMessage("⏳ Adding book…", "loading"));
 
         const result = await addBookManually(title, author, quantity, shelf);
 
         if (result.success) {
             resultDiv.innerHTML = "";
             const card = document.createElement("div");
-            card.className = "upload-result-card";
+            card.className = "extraction-card success-card";
             card.innerHTML = `
-                <div class="upload-result-header">
-                    <span class="upload-result-success-icon">✅</span>
+                <div class="extraction-header">
+                    <span class="icon">✅</span>
                     <h3>Book Added Successfully!</h3>
                 </div>
-                <div class="upload-result-details">
-                    <div class="upload-detail-box">
-                        <div class="upload-detail-label">📖 Title</div>
-                        <div class="upload-detail-value">${escapeHtml(title)}</div>
+                <div class="extraction-details">
+                    <div class="extraction-detail">
+                        <div class="extraction-detail-label">📖 Title</div>
+                        <div class="extraction-detail-value">${escapeHtml(title)}</div>
                     </div>
-                    <div class="upload-detail-box">
-                        <div class="upload-detail-label">👤 Author</div>
-                        <div class="upload-detail-value">${escapeHtml(author)}</div>
+                    <div class="extraction-detail">
+                        <div class="extraction-detail-label">👤 Author</div>
+                        <div class="extraction-detail-value">${escapeHtml(author)}</div>
                     </div>
-                    <div class="upload-detail-box">
-                        <div class="upload-detail-label">📦 Quantity</div>
-                        <div class="upload-detail-value">${quantity}</div>
+                    <div class="extraction-detail">
+                        <div class="extraction-detail-label">📦 Quantity</div>
+                        <div class="extraction-detail-value">${quantity}</div>
                     </div>
-                    <div class="upload-detail-box">
-                        <div class="upload-detail-label">📍 Shelf</div>
-                        <div class="upload-detail-value">${escapeHtml(shelf)}</div>
+                    <div class="extraction-detail">
+                        <div class="extraction-detail-label">📍 Shelf</div>
+                        <div class="extraction-detail-value">${escapeHtml(shelf)}</div>
                     </div>
                 </div>
             `;
             resultDiv.appendChild(card);
             document.getElementById("manualBookForm").reset();
+            // Reset preview
+            document.getElementById("previewTitle").textContent = "Book Title";
+            document.getElementById("previewAuthor").textContent = "by Author";
+            document.getElementById("previewQty").textContent = "Qty: 1";
+            document.getElementById("previewShelf").textContent = "Shelf: —";
+            document.getElementById("previewCoverInner").innerHTML = '<span style="font-size:1.5rem">📖</span><span>Cover Preview</span>';
         } else {
             resultDiv.appendChild(createMessage(`❌ ${result.error}`, "error"));
         }
+    });
+
+    // ===== LIVE PREVIEW for manual add =====
+    ["manualTitle", "manualAuthor", "manualQuantity", "manualShelf"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener("input", updatePreview);
     });
 
     // ===== MANAGE BOOKS =====
@@ -816,7 +899,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const listDiv = document.getElementById("booksList");
         const tableDiv = document.getElementById("booksTable");
 
-        resultDiv.innerHTML = "⏳ Loading books...";
+        resultDiv.innerHTML = "";
+        resultDiv.appendChild(createMessage("⏳ Loading books…", "loading"));
         tableDiv.innerHTML = "";
 
         const result = await getBooksForEdit();
@@ -831,34 +915,36 @@ document.addEventListener("DOMContentLoaded", () => {
                 listDiv.style.display = "block";
                 const html = `
                     <table class="books-table">
-                        <tr>
-                            <th>Title</th>
-                            <th>Author</th>
-                            <th>Quantity</th>
-                            <th>Shelf</th>
-                            <th>Action</th>
-                        </tr>
-                        ${result.data.books.map(book => `
+                        <thead>
                             <tr>
-                                <td>${escapeHtml(book.title)}</td>
-                                <td>${escapeHtml(book.author)}</td>
-                                <td>${book.quantity}</td>
-                                <td>${escapeHtml(book.shelf)}</td>
-                                <td><button class="book-edit-btn" data-id="${book.id}">✏️ Edit</button></td>
+                                <th>Title</th>
+                                <th>Author</th>
+                                <th>Qty</th>
+                                <th>Shelf</th>
+                                <th>Action</th>
                             </tr>
-                        `).join("")}
+                        </thead>
+                        <tbody>
+                            ${result.data.books.map(book => `
+                                <tr>
+                                    <td>${escapeHtml(book.title)}</td>
+                                    <td>${escapeHtml(book.author)}</td>
+                                    <td><span class="qty-pill">${book.quantity}</span></td>
+                                    <td><span class="shelf-pill">${escapeHtml(book.shelf)}</span></td>
+                                    <td><button class="edit-btn" data-id="${book.id}">✏️ Edit</button></td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
                     </table>
                 `;
                 tableDiv.innerHTML = html;
 
                 // Add event listeners to edit buttons
-                tableDiv.querySelectorAll(".book-edit-btn").forEach(btn => {
-                    btn.addEventListener("click", (e) => {
+                tableDiv.querySelectorAll(".edit-btn").forEach(btn => {
+                    btn.addEventListener("click", () => {
                         const bookId = btn.getAttribute("data-id");
                         const book = result.data.books.find(b => b.id === parseInt(bookId));
-                        if (book) {
-                            showBookEditForm(book, result.data.books, tableDiv, resultDiv);
-                        }
+                        if (book) showEditModal(book);
                     });
                 });
             }
@@ -868,10 +954,59 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // ===== MANAGE TABLE FILTER =====
+    document.getElementById("manageSearchInput").addEventListener("input", (e) => {
+        filterManageTable(e.target.value);
+    });
+
+    // ===== EDIT MODAL =====
+    document.getElementById("modalCloseBtn").addEventListener("click", closeEditModal);
+    document.getElementById("modalCancelBtn").addEventListener("click", closeEditModal);
+
+    document.getElementById("modalSaveBtn").addEventListener("click", async () => {
+        const title = document.getElementById("edit-title").value.trim();
+        const author = document.getElementById("edit-author").value.trim();
+        const quantity = document.getElementById("edit-quantity").value;
+        const shelf = document.getElementById("edit-shelf").value.trim();
+        const modalResultDiv = document.getElementById("editModalResult");
+
+        if (title.length < 2 || author.length < 2 || quantity < 1 || !shelf) {
+            modalResultDiv.innerHTML = "";
+            modalResultDiv.appendChild(createMessage("❌ Please fill in all fields correctly", "error"));
+            return;
+        }
+
+        modalResultDiv.innerHTML = "";
+        modalResultDiv.appendChild(createMessage("⏳ Updating…", "loading"));
+
+        const result = await updateBookDetails(appState.editingBookId, title, author, quantity, shelf);
+
+        modalResultDiv.innerHTML = "";
+
+        if (result.success) {
+            modalResultDiv.appendChild(createMessage("✅ Book updated successfully!", "success"));
+            // Reload the books list after short delay
+            setTimeout(() => {
+                closeEditModal();
+                document.getElementById("loadBooksBtn").click();
+            }, 1000);
+        } else {
+            modalResultDiv.appendChild(createMessage(`❌ ${result.error}`, "error"));
+        }
+    });
+
+    // Close modal on overlay click
+    document.getElementById("editModal").addEventListener("click", (e) => {
+        if (e.target === document.getElementById("editModal")) {
+            closeEditModal();
+        }
+    });
+
     // ===== ADMIN DEBUG BUTTONS =====
     document.getElementById("debugBtn").addEventListener("click", async () => {
         const resultDiv = document.getElementById("debugResult");
-        resultDiv.innerHTML = "⏳ Loading...";
+        resultDiv.innerHTML = "";
+        resultDiv.appendChild(createMessage("⏳ Loading…", "loading"));
 
         const result = await debugAllBooks();
 
@@ -879,7 +1014,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (result.success) {
             const html = `
-                <h4>📚 Total Books: ${result.data.total_books}</h4>
+                <h4 style="font-family:'Playfair Display',serif;margin-bottom:0.75rem">📚 ${result.data.total_books} Books in Database</h4>
                 <table class="debug-table">
                     <tr>
                         <th>Title</th>
@@ -889,10 +1024,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     </tr>
                     ${result.data.books.map(b => `
                         <tr>
-                            <td>${b.title}</td>
-                            <td>${b.author}</td>
-                            <td>${b.quantity}</td>
-                            <td>${b.shelf}</td>
+                            <td>${escapeHtml(b.title)}</td>
+                            <td>${escapeHtml(b.author)}</td>
+                            <td><span class="qty-pill">${b.quantity}</span></td>
+                            <td><span class="shelf-pill">${escapeHtml(b.shelf)}</span></td>
                         </tr>
                     `).join("")}
                 </table>
@@ -920,7 +1055,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("listUsersBtn").addEventListener("click", async () => {
         const resultDiv = document.getElementById("debugResult");
-        resultDiv.innerHTML = "⏳ Loading...";
+        resultDiv.innerHTML = "";
+        resultDiv.appendChild(createMessage("⏳ Loading…", "loading"));
 
         const result = await listUsers();
 
@@ -928,7 +1064,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (result.success) {
             const html = `
-                <h4>👥 Total Users: ${result.data.total_users}</h4>
+                <h4 style="font-family:'Playfair Display',serif;margin-bottom:0.75rem">👥 ${result.data.total_users} Registered Users</h4>
                 <table class="debug-table">
                     <tr>
                         <th>Username</th>
@@ -937,7 +1073,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     </tr>
                     ${result.data.users.map(u => `
                         <tr>
-                            <td>${u.username}</td>
+                            <td>${escapeHtml(u.username)}</td>
                             <td><span class="role-badge ${u.role}">${u.role}</span></td>
                             <td>${new Date(u.created_at).toLocaleDateString()}</td>
                         </tr>
@@ -950,11 +1086,27 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Initialize
+    // ===== INITIALIZE =====
     const token = getToken();
     if (token) {
         appState.token = token;
-        showAppPage();
+        // Try to get user info from token
+        fetch(`${API_URL}/auth/me/`, { headers: { "Authorization": `Bearer ${token}` } })
+            .then(res => res.json())
+            .then(data => {
+                if (data.username) {
+                    appState.user = data;
+                    appState.userRole = data.role;
+                    showAppPage();
+                } else {
+                    clearAuth();
+                    showLoginPage();
+                }
+            })
+            .catch(() => {
+                clearAuth();
+                showLoginPage();
+            });
     } else {
         showLoginPage();
     }
