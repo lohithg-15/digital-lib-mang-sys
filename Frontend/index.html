@@ -26,7 +26,9 @@
             <!-- Left brand panel -->
             <div class="login-brand-panel">
                 <div class="brand-content">
-                    <span class="brand-logo">📚</span>
+                    <div class="brand-logo">
+                        <img src="images/logo-final.png" alt="Librarium Logo" class="logo-image">
+                    </div>
                     <h1 class="brand-name">Librarium</h1>
                     <p class="brand-tagline">A Digital Library Book Tracking &amp; Management System</p>
 
@@ -52,10 +54,6 @@
                         </div>
                         <div class="shelf-base"></div>
                     </div>
-
-                    <div id="backendStatus" class="status-pill initializing">
-                        <span class="status-dot"></span> Checking backend…
-                    </div>
                 </div>
             </div>
 
@@ -76,18 +74,17 @@
                         <div id="credentialsSection" style="display: block;">
                             <div class="field-group">
                                 <label for="username">Username</label>
-                                <input type="text" id="username" placeholder="Enter your username" required>
+                                <input type="text" id="username" placeholder="Enter your username" autocomplete="off" required>
                             </div>
                             <div class="field-group">
                                 <label for="password">Password</label>
                                 <div class="pass-wrap">
-                                    <input type="password" id="password" placeholder="Enter your password" required>
+                                    <input type="password" id="password" placeholder="Enter your password" autocomplete="new-password" required>
                                     <button type="button" class="pass-toggle" id="passToggleBtn">👁</button>
                                 </div>
                             </div>
                             <div id="loginError" class="login-error" style="display:none"></div>
                             <button type="submit" class="btn-signin" id="loginBtn">🔑 Sign In</button>
-                            <p class="login-hint">Default: admin / admin123</p>
                         </div>
 
                         <div id="customerLoginSection" style="display: none;">
@@ -122,7 +119,7 @@
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-logo">
-                <span>📚</span>
+                <img src="images/logo-final.png" alt="Librarium" class="sidebar-logo-img">
                 <span class="sidebar-brand">Librarium</span>
             </div>
 

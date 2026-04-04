@@ -75,6 +75,18 @@ body {
   font-size: 3rem;
   margin-bottom: 1.25rem;
   display: block;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-image {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
 }
 
 .brand-name {
@@ -329,6 +341,12 @@ body {
   padding: 1.4rem 1.25rem;
   border-bottom: 1px solid rgba(255,255,255,0.07);
   font-size: 1.3rem;
+}
+
+.sidebar-logo-img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
 }
 
 .sidebar-brand {
