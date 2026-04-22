@@ -128,6 +128,11 @@ function showAppPage() {
 
     // Navigate to search by default
     navigateToSection("search-section");
+
+    // Populate category dropdowns if admin
+    if (appState.userRole === "admin") {
+        populateCategoryDropdowns();
+    }
 }
 
 function navigateToSection(sectionId) {
@@ -206,7 +211,7 @@ function getAuthHeaders() {
     };
 }
 
-async function uploadBook(image, quantity, shelf) {
+async function uploadBook(image, quantity, shelf, bookNumber, category) {
     try {
         if (!appState.backendStatus.geminiReady) {
             throw new Error("Backend Gemini API not ready. Please wait...");
@@ -216,6 +221,8 @@ async function uploadBook(image, quantity, shelf) {
         formData.append("image", image);
         formData.append("quantity", quantity);
         formData.append("shelf", shelf);
+        formData.append("book_number", bookNumber);
+        formData.append("category", category || "");
 
         const response = await fetch(`${API_URL}/upload-book/`, {
             method: "POST",
@@ -333,7 +340,94 @@ async function listUsers() {
     }
 }
 
-async function addBookManually(title, author, quantity, shelf) {
+// ====================== CATEGORY API ======================
+
+async function fetchCategories() {
+    try {
+        const response = await fetch(`${API_URL}/categories/`, {
+            headers: getAuthHeaders()
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Failed to fetch categories");
+        return data.categories || [];
+    } catch (error) {
+        console.warn("Could not load categories:", error.message);
+        return [];
+    }
+}
+
+async function createCategory(name) {
+    try {
+        const response = await fetch(`${API_URL}/categories/`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeaders()
+            },
+            body: JSON.stringify({ name: name })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Failed to create category");
+        return { success: true, data: data };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
+async function populateCategoryDropdowns() {
+    const categories = await fetchCategories();
+    const selects = document.querySelectorAll(".category-select");
+    selects.forEach(sel => {
+        const currentVal = sel.value;
+        // Keep first two options (placeholder + create new)
+        while (sel.options.length > 2) sel.remove(2);
+        // Insert category options before the last option (create new)
+        categories.forEach(cat => {
+            const opt = document.createElement("option");
+            opt.value = cat.name;
+            opt.textContent = cat.name;
+            sel.insertBefore(opt, sel.options[1]); // insert before "Create new"
+        });
+        // Restore previous value if it still exists
+        if (currentVal && currentVal !== "__new__") {
+            sel.value = currentVal;
+        }
+    });
+}
+
+function setupCategoryCombo(selectId, wrapId, inputId, btnId) {
+    const sel = document.getElementById(selectId);
+    const wrap = document.getElementById(wrapId);
+    const inp = document.getElementById(inputId);
+    const btn = document.getElementById(btnId);
+    if (!sel || !wrap || !inp || !btn) return;
+
+    sel.addEventListener("change", () => {
+        if (sel.value === "__new__") {
+            wrap.style.display = "flex";
+            inp.focus();
+        } else {
+            wrap.style.display = "none";
+        }
+    });
+
+    btn.addEventListener("click", async () => {
+        const name = inp.value.trim();
+        if (name.length < 2) { alert("Category name must be at least 2 characters"); return; }
+        const result = await createCategory(name);
+        if (result.success) {
+            inp.value = "";
+            wrap.style.display = "none";
+            await populateCategoryDropdowns();
+            // Select the newly created category in THIS dropdown
+            sel.value = name;
+        } else {
+            alert(result.error);
+        }
+    });
+}
+
+async function addBookManually(title, author, quantity, shelf, bookNumber, category) {
     try {
         const response = await fetch(`${API_URL}/add-book-manual/`, {
             method: "POST",
@@ -345,7 +439,9 @@ async function addBookManually(title, author, quantity, shelf) {
                 title: title,
                 author: author,
                 quantity: parseInt(quantity),
-                shelf: shelf
+                shelf: shelf,
+                book_number: bookNumber,
+                category: category || null
             })
         });
 
@@ -379,7 +475,7 @@ async function getBooksForEdit() {
     }
 }
 
-async function updateBookDetails(bookId, title, author, quantity, shelf) {
+async function updateBookDetails(bookId, title, author, quantity, shelf, bookNumber, category) {
     try {
         const response = await fetch(`${API_URL}/update-book/`, {
             method: "PUT",
@@ -392,7 +488,9 @@ async function updateBookDetails(bookId, title, author, quantity, shelf) {
                 title: title,
                 author: author,
                 quantity: parseInt(quantity),
-                shelf: shelf
+                shelf: shelf,
+                book_number: bookNumber,
+                category: category || null
             })
         });
 
@@ -408,7 +506,7 @@ async function updateBookDetails(bookId, title, author, quantity, shelf) {
     }
 }
 
-async function saveExtractedBook(title, author, quantity, shelf) {
+async function saveExtractedBook(title, author, quantity, shelf, bookNumber, category) {
     try {
         const response = await fetch(`${API_URL}/save-extracted-book/`, {
             method: "POST",
@@ -420,7 +518,9 @@ async function saveExtractedBook(title, author, quantity, shelf) {
                 title: title,
                 author: author,
                 quantity: parseInt(quantity),
-                shelf: shelf
+                shelf: shelf,
+                book_number: bookNumber,
+                category: category || null
             })
         });
 
@@ -455,6 +555,8 @@ function renderBookCard(book, index) {
                 <div class="book-card-title">${escapeHtml(book.title)}</div>
                 <div class="book-card-author">by ${escapeHtml(book.author)}</div>
                 <div class="book-card-tags">
+                    ${book.book_number ? `<span class="book-tag">📌 #${escapeHtml(book.book_number)}</span>` : ''}
+                    ${book.category ? `<span class="book-tag shelf">🏷️ ${escapeHtml(book.category)}</span>` : ''}
                     <span class="book-tag">📦 Qty: ${book.quantity}</span>
                     <span class="book-tag shelf">📍 ${escapeHtml(book.shelf)}</span>
                 </div>
@@ -469,6 +571,26 @@ function showEditModal(book) {
     appState.editingBookId = book.id;
     document.getElementById("edit-title").value = book.title || "";
     document.getElementById("edit-author").value = book.author || "";
+    document.getElementById("edit-book-number").value = book.book_number || "";
+    // Set category dropdown
+    const catSel = document.getElementById("edit-category");
+    if (book.category) {
+        // Make sure the option exists, add it if not
+        let found = false;
+        for (let i = 0; i < catSel.options.length; i++) {
+            if (catSel.options[i].value === book.category) { found = true; break; }
+        }
+        if (!found) {
+            const opt = document.createElement("option");
+            opt.value = book.category;
+            opt.textContent = book.category;
+            catSel.insertBefore(opt, catSel.options[1]);
+        }
+        catSel.value = book.category;
+    } else {
+        catSel.value = "";
+    }
+    document.getElementById("editNewCatWrap").style.display = "none";
     document.getElementById("edit-quantity").value = book.quantity || 1;
     document.getElementById("edit-shelf").value = book.shelf || "";
     document.getElementById("editModalResult").innerHTML = "";
@@ -485,13 +607,18 @@ function closeEditModal() {
 function updatePreview() {
     const title = document.getElementById("manualTitle").value || "Book Title";
     const author = document.getElementById("manualAuthor").value || "Author";
+    const bookNum = document.getElementById("manualBookNumber").value || "—";
     const qty = document.getElementById("manualQuantity").value || "1";
     const shelf = document.getElementById("manualShelf").value || "—";
+    const catSel = document.getElementById("manualCategory");
+    const cat = (catSel && catSel.value && catSel.value !== "__new__") ? catSel.value : "—";
 
     document.getElementById("previewTitle").textContent = title;
     document.getElementById("previewAuthor").textContent = `by ${author}`;
+    document.getElementById("previewBookNum").textContent = `Book#: ${bookNum}`;
     document.getElementById("previewQty").textContent = `Qty: ${qty}`;
     document.getElementById("previewShelf").textContent = `Shelf: ${shelf}`;
+    document.getElementById("previewCategory").textContent = `Cat: ${cat}`;
 
     // Update spine preview color
     const coverInner = document.getElementById("previewCoverInner");
@@ -517,6 +644,11 @@ function filterManageTable(query) {
 document.addEventListener("DOMContentLoaded", () => {
     checkBackendStatus();
     setInterval(checkBackendStatus, 5000);
+
+    // ===== CATEGORY COMBOS =====
+    setupCategoryCombo("uploadCategory", "uploadNewCatWrap", "uploadNewCatInput", "uploadAddCatBtn");
+    setupCategoryCombo("manualCategory", "manualNewCatWrap", "manualNewCatInput", "manualAddCatBtn");
+    setupCategoryCombo("edit-category", "editNewCatWrap", "editNewCatInput", "editAddCatBtn");
 
     // ===== LOGIN ROLE TABS =====
     document.querySelectorAll(".role-tab").forEach(btn => {
@@ -585,16 +717,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("hamburgerBtn").addEventListener("click", toggleSidebar);
     document.getElementById("sidebarOverlay").addEventListener("click", closeSidebar);
 
-    // ===== QUICK SEARCH CHIPS =====
-    document.querySelectorAll(".chip").forEach(chip => {
-        chip.addEventListener("click", () => {
-            const query = chip.dataset.query;
-            if (query) {
-                document.getElementById("searchQuery").value = query;
-                document.getElementById("searchBtn").click();
-            }
-        });
-    });
+
 
     // ===== CUSTOMER SEARCH =====
     document.getElementById("searchBtn").addEventListener("click", async () => {
@@ -667,11 +790,19 @@ document.addEventListener("DOMContentLoaded", () => {
         resultDiv.innerHTML = "";
 
         const image = document.getElementById("image").files[0];
+        const bookNumber = document.getElementById("bookNumber").value.trim();
         const quantity = document.getElementById("quantity").value;
         const shelf = document.getElementById("shelf").value;
+        const uploadCatSel = document.getElementById("uploadCategory");
+        const uploadCategory = (uploadCatSel && uploadCatSel.value && uploadCatSel.value !== "__new__") ? uploadCatSel.value : "";
 
         if (!image) {
             resultDiv.appendChild(createMessage("❌ Please select an image", "error"));
+            return;
+        }
+
+        if (!bookNumber) {
+            resultDiv.appendChild(createMessage("❌ Please enter a book number", "error"));
             return;
         }
 
@@ -704,7 +835,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Step 2: Upload and extract
         resultDiv.appendChild(createMessage("⏳ Uploading and extracting…", "loading"));
 
-        const result = await uploadBook(image, quantity, shelf);
+        const result = await uploadBook(image, quantity, shelf, bookNumber, uploadCategory);
 
         if (result.success) {
             resultDiv.innerHTML = "";
@@ -727,6 +858,14 @@ document.addEventListener("DOMContentLoaded", () => {
                         <input type="text" id="extract-author" value="${escapeHtml(result.data.author)}">
                     </div>
                     <div class="field-group">
+                        <label for="extract-book-number">Book Number</label>
+                        <input type="text" id="extract-book-number" value="${escapeHtml(bookNumber)}" readonly>
+                    </div>
+                    <div class="field-group">
+                        <label for="extract-category">Category</label>
+                        <input type="text" id="extract-category" value="${escapeHtml(uploadCategory)}">
+                    </div>
+                    <div class="field-group">
                         <label for="extract-quantity">Quantity</label>
                         <input type="number" id="extract-quantity" value="${quantity}" min="1">
                     </div>
@@ -746,6 +885,8 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("saveExtractedBtn").addEventListener("click", async () => {
                 const title = document.getElementById("extract-title").value.trim();
                 const author = document.getElementById("extract-author").value.trim();
+                const bNum = document.getElementById("extract-book-number").value.trim();
+                const eCat = document.getElementById("extract-category").value.trim();
                 const qty = document.getElementById("extract-quantity").value;
                 const sh = document.getElementById("extract-shelf").value.trim();
 
@@ -758,7 +899,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 resultDiv.innerHTML = "";
                 resultDiv.appendChild(createMessage("⏳ Saving to database…", "loading"));
 
-                const saveResult = await saveExtractedBook(title, author, parseInt(qty), sh);
+                const saveResult = await saveExtractedBook(title, author, parseInt(qty), sh, bNum, eCat);
 
                 resultDiv.innerHTML = "";
 
@@ -821,8 +962,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const title = document.getElementById("manualTitle").value.trim();
         const author = document.getElementById("manualAuthor").value.trim();
+        const bookNumber = document.getElementById("manualBookNumber").value.trim();
         const quantity = document.getElementById("manualQuantity").value;
         const shelf = document.getElementById("manualShelf").value.trim();
+        const manCatSel = document.getElementById("manualCategory");
+        const category = (manCatSel && manCatSel.value && manCatSel.value !== "__new__") ? manCatSel.value : "";
 
         // Validate inputs
         if (title.length < 2) {
@@ -841,10 +985,14 @@ document.addEventListener("DOMContentLoaded", () => {
             resultDiv.appendChild(createMessage("❌ Please enter a shelf location", "error"));
             return;
         }
+        if (!bookNumber) {
+            resultDiv.appendChild(createMessage("❌ Please enter a book number", "error"));
+            return;
+        }
 
         resultDiv.appendChild(createMessage("⏳ Adding book…", "loading"));
 
-        const result = await addBookManually(title, author, quantity, shelf);
+        const result = await addBookManually(title, author, quantity, shelf, bookNumber, category);
 
         if (result.success) {
             resultDiv.innerHTML = "";
@@ -865,6 +1013,14 @@ document.addEventListener("DOMContentLoaded", () => {
                         <div class="extraction-detail-value">${escapeHtml(author)}</div>
                     </div>
                     <div class="extraction-detail">
+                        <div class="extraction-detail-label">📌 Book #</div>
+                        <div class="extraction-detail-value">${escapeHtml(bookNumber)}</div>
+                    </div>
+                    <div class="extraction-detail">
+                        <div class="extraction-detail-label">🏷️ Category</div>
+                        <div class="extraction-detail-value">${escapeHtml(category || '—')}</div>
+                    </div>
+                    <div class="extraction-detail">
                         <div class="extraction-detail-label">📦 Quantity</div>
                         <div class="extraction-detail-value">${quantity}</div>
                     </div>
@@ -879,8 +1035,10 @@ document.addEventListener("DOMContentLoaded", () => {
             // Reset preview
             document.getElementById("previewTitle").textContent = "Book Title";
             document.getElementById("previewAuthor").textContent = "by Author";
+            document.getElementById("previewBookNum").textContent = "Book#: —";
             document.getElementById("previewQty").textContent = "Qty: 1";
             document.getElementById("previewShelf").textContent = "Shelf: —";
+            document.getElementById("previewCategory").textContent = "Cat: —";
             document.getElementById("previewCoverInner").innerHTML = '<span style="font-size:1.5rem">📖</span><span>Cover Preview</span>';
         } else {
             resultDiv.appendChild(createMessage(`❌ ${result.error}`, "error"));
@@ -888,10 +1046,13 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // ===== LIVE PREVIEW for manual add =====
-    ["manualTitle", "manualAuthor", "manualQuantity", "manualShelf"].forEach(id => {
+    ["manualTitle", "manualAuthor", "manualBookNumber", "manualQuantity", "manualShelf"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener("input", updatePreview);
     });
+    // Category dropdown also updates preview
+    const manCatSelPreview = document.getElementById("manualCategory");
+    if (manCatSelPreview) manCatSelPreview.addEventListener("change", updatePreview);
 
     // ===== MANAGE BOOKS =====
     document.getElementById("loadBooksBtn").addEventListener("click", async () => {
@@ -917,8 +1078,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     <table class="books-table">
                         <thead>
                             <tr>
+                                <th>Book #</th>
                                 <th>Title</th>
                                 <th>Author</th>
+                                <th>Category</th>
                                 <th>Qty</th>
                                 <th>Shelf</th>
                                 <th>Action</th>
@@ -927,8 +1090,10 @@ document.addEventListener("DOMContentLoaded", () => {
                         <tbody>
                             ${result.data.books.map(book => `
                                 <tr>
+                                    <td><span class="book-num-pill">${escapeHtml(book.book_number || '—')}</span></td>
                                     <td>${escapeHtml(book.title)}</td>
                                     <td>${escapeHtml(book.author)}</td>
+                                    <td><span class="category-pill">${escapeHtml(book.category || '—')}</span></td>
                                     <td><span class="qty-pill">${book.quantity}</span></td>
                                     <td><span class="shelf-pill">${escapeHtml(book.shelf)}</span></td>
                                     <td><button class="edit-btn" data-id="${book.id}">✏️ Edit</button></td>
@@ -966,6 +1131,9 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("modalSaveBtn").addEventListener("click", async () => {
         const title = document.getElementById("edit-title").value.trim();
         const author = document.getElementById("edit-author").value.trim();
+        const bookNumber = document.getElementById("edit-book-number").value.trim();
+        const editCatSel = document.getElementById("edit-category");
+        const editCategory = (editCatSel && editCatSel.value && editCatSel.value !== "__new__") ? editCatSel.value : "";
         const quantity = document.getElementById("edit-quantity").value;
         const shelf = document.getElementById("edit-shelf").value.trim();
         const modalResultDiv = document.getElementById("editModalResult");
@@ -979,7 +1147,7 @@ document.addEventListener("DOMContentLoaded", () => {
         modalResultDiv.innerHTML = "";
         modalResultDiv.appendChild(createMessage("⏳ Updating…", "loading"));
 
-        const result = await updateBookDetails(appState.editingBookId, title, author, quantity, shelf);
+        const result = await updateBookDetails(appState.editingBookId, title, author, quantity, shelf, bookNumber, editCategory);
 
         modalResultDiv.innerHTML = "";
 
@@ -1017,15 +1185,19 @@ document.addEventListener("DOMContentLoaded", () => {
                 <h4 style="font-family:'Playfair Display',serif;margin-bottom:0.75rem">📚 ${result.data.total_books} Books in Database</h4>
                 <table class="debug-table">
                     <tr>
+                        <th>Book #</th>
                         <th>Title</th>
                         <th>Author</th>
+                        <th>Category</th>
                         <th>Qty</th>
                         <th>Shelf</th>
                     </tr>
                     ${result.data.books.map(b => `
                         <tr>
+                            <td><span class="book-num-pill">${escapeHtml(b.book_number || '—')}</span></td>
                             <td>${escapeHtml(b.title)}</td>
                             <td>${escapeHtml(b.author)}</td>
+                            <td><span class="category-pill">${escapeHtml(b.category || '—')}</span></td>
                             <td><span class="qty-pill">${b.quantity}</span></td>
                             <td><span class="shelf-pill">${escapeHtml(b.shelf)}</span></td>
                         </tr>

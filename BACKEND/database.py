@@ -12,13 +12,10 @@ def get_connection():
     return conn
 
 def create_table():
-    """Create books table if it doesn't exist"""
+    """Create books and categories tables if they don't exist"""
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
-        # Drop old table if exists (for fresh start if needed)
-        # cursor.execute("DROP TABLE IF EXISTS books")
         
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS books (
@@ -27,18 +24,32 @@ def create_table():
             author TEXT NOT NULL,
             quantity INTEGER NOT NULL DEFAULT 0,
             shelf TEXT NOT NULL,
-            isbn TEXT
+            isbn TEXT,
+            book_number TEXT,
+            category TEXT
         )
         """)
-        # Add isbn column if table already existed without it
-        try:
-            cursor.execute("ALTER TABLE books ADD COLUMN isbn TEXT")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        # Indexes for fast search when many books
+        # Add columns if table already existed without them
+        for col in ["isbn", "book_number", "category"]:
+            try:
+                cursor.execute(f"ALTER TABLE books ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+        
+        # Categories table for dropdown options
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE
+        )
+        """)
+        
+        # Indexes for fast search
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_title ON books(LOWER(title))")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_author ON books(LOWER(author))")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_isbn ON books(isbn)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_book_number ON books(book_number)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_category ON books(category)")
         conn.commit()
         conn.close()
         print(f"✅ Database initialized at: {DB_PATH}")
@@ -47,41 +58,50 @@ def create_table():
         print(f"❌ Error creating table: {e}")
         return False
 
-def insert_book(title, author, quantity, shelf, isbn=None):
-    """Insert a new book into the database. isbn is optional (for identification)."""
+def insert_book(title, author, quantity, shelf, isbn=None, book_number=None, category=None):
+    """Insert a new book into the database."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-        INSERT INTO books (title, author, quantity, shelf, isbn)
-        VALUES (?, ?, ?, ?, ?)
-        """, (title, author, quantity, shelf, isbn))
+        INSERT INTO books (title, author, quantity, shelf, isbn, book_number, category)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (title, author, quantity, shelf, isbn, book_number, category))
         conn.commit()
         conn.close()
-        print(f"✅ Book saved: '{title}' by '{author}' (Qty: {quantity}, Shelf: {shelf})")
+        print(f"✅ Book saved: '{title}' by '{author}' (Qty: {quantity}, Shelf: {shelf}, Book#: {book_number}, Cat: {category})")
         return True
     except Exception as e:
         print(f"❌ Error inserting book: {e}")
         return False
 
-def search_books(keyword):
-    """Search for books by title or author (partial match with LIKE)"""
+def search_books(keyword, category=None):
+    """Search for books by title or author (partial match with LIKE), optionally filtered by category"""
     try:
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Use case-insensitive partial match
-        query = """
-        SELECT title, author, quantity, shelf
-        FROM books
-        WHERE LOWER(title) LIKE LOWER(?) OR LOWER(author) LIKE LOWER(?)
-        ORDER BY title ASC
-        """
-        cursor.execute(query, (f"%{keyword}%", f"%{keyword}%"))
+        if category:
+            query = """
+            SELECT title, author, quantity, shelf, book_number, category
+            FROM books
+            WHERE (LOWER(title) LIKE LOWER(?) OR LOWER(author) LIKE LOWER(?))
+              AND LOWER(category) = LOWER(?)
+            ORDER BY title ASC
+            """
+            cursor.execute(query, (f"%{keyword}%", f"%{keyword}%", category))
+        else:
+            query = """
+            SELECT title, author, quantity, shelf, book_number, category
+            FROM books
+            WHERE LOWER(title) LIKE LOWER(?) OR LOWER(author) LIKE LOWER(?)
+            ORDER BY title ASC
+            """
+            cursor.execute(query, (f"%{keyword}%", f"%{keyword}%"))
         results = cursor.fetchall()
         conn.close()
         
-        print(f"✅ Search '{keyword}' returned {len(results)} results")
+        print(f"✅ Search '{keyword}' (cat: {category}) returned {len(results)} results")
         return results
     except Exception as e:
         print(f"❌ Error searching books: {e}")
@@ -125,14 +145,13 @@ def get_all_books():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT title, author, quantity, shelf, isbn FROM books ORDER BY title ASC")
+        cursor.execute("SELECT title, author, quantity, shelf, isbn, book_number, category FROM books ORDER BY title ASC")
         results = cursor.fetchall()
         conn.close()
         return results
     except Exception as e:
         print(f"❌ Error getting all books: {e}")
         return []
-
 def delete_all_books():
     """Delete all books from database (for testing/reset)"""
     try:
@@ -147,13 +166,12 @@ def delete_all_books():
         print(f"❌ Error deleting books: {e}")
         return False
 
-def update_book(book_id, title=None, author=None, quantity=None, shelf=None):
-    """Update a book's details (title, author, quantity, shelf)"""
+def update_book(book_id, title=None, author=None, quantity=None, shelf=None, book_number=None, category=None):
+    """Update a book's details"""
     try:
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Build update query dynamically based on what fields are provided
         updates = []
         params = []
         
@@ -169,6 +187,12 @@ def update_book(book_id, title=None, author=None, quantity=None, shelf=None):
         if shelf is not None:
             updates.append("shelf = ?")
             params.append(shelf)
+        if book_number is not None:
+            updates.append("book_number = ?")
+            params.append(book_number)
+        if category is not None:
+            updates.append("category = ?")
+            params.append(category)
         
         if not updates:
             return False  # Nothing to update
@@ -195,10 +219,94 @@ def get_books_with_ids():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, title, author, quantity, shelf, isbn FROM books ORDER BY title ASC")
+        cursor.execute("SELECT id, title, author, quantity, shelf, isbn, book_number, category FROM books ORDER BY title ASC")
         results = cursor.fetchall()
         conn.close()
         return results
     except Exception as e:
         print(f"❌ Error getting books with IDs: {e}")
+        return []
+
+# ====================== CATEGORY CRUD ======================
+
+def insert_category(name):
+    """Insert a new category. Returns True if inserted, False if already exists or error."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO categories (name) VALUES (?)", (name.strip(),))
+        conn.commit()
+        conn.close()
+        print(f"✅ Category added: '{name}'")
+        return True
+    except sqlite3.IntegrityError:
+        print(f"ℹ️ Category already exists: '{name}'")
+        return False
+    except Exception as e:
+        print(f"❌ Error inserting category: {e}")
+        return False
+
+def get_all_categories():
+    """Get all categories sorted alphabetically"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM categories ORDER BY name ASC")
+        results = cursor.fetchall()
+        conn.close()
+        return results
+    except Exception as e:
+        print(f"❌ Error getting categories: {e}")
+        return []
+
+def delete_category(category_id):
+    """Delete a category by ID"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        if deleted:
+            print(f"✅ Category ID {category_id} deleted")
+        return deleted
+    except Exception as e:
+        print(f"❌ Error deleting category: {e}")
+        return False
+
+def get_distinct_categories():
+    """Get unique categories actually used in the books table (for public display)"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT DISTINCT category FROM books
+        WHERE category IS NOT NULL AND category != ''
+        ORDER BY category ASC
+        """)
+        results = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return results
+    except Exception as e:
+        print(f"❌ Error getting distinct categories: {e}")
+        return []
+
+def get_books_by_category(category):
+    """Get all books belonging to a specific category"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT title, author, quantity, shelf, book_number, category
+        FROM books
+        WHERE LOWER(category) = LOWER(?)
+        ORDER BY title ASC
+        """, (category,))
+        results = cursor.fetchall()
+        conn.close()
+        print(f"✅ Category '{category}' returned {len(results)} books")
+        return results
+    except Exception as e:
+        print(f"❌ Error getting books by category: {e}")
         return []

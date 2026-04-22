@@ -11,7 +11,7 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(__file__))
 
 from gemini_service import extract_book_metadata_with_gemini, validate_gemini_api_key, validate_image_quality
-from database import create_table, insert_book, search_books, search_books_fuzzy, get_all_books, delete_all_books, update_book, get_books_with_ids
+from database import create_table, insert_book, search_books, search_books_fuzzy, get_all_books, delete_all_books, update_book, get_books_with_ids, insert_category, get_all_categories, delete_category, get_distinct_categories, get_books_by_category
 from book_lookup import identify_book
 from auth import (
     create_users_table, login_user, register_user, verify_token, 
@@ -35,6 +35,8 @@ class AddBookRequest(BaseModel):
     author: str
     quantity: int
     shelf: str
+    book_number: Optional[str] = None
+    category: Optional[str] = None
 
 class UpdateBookRequest(BaseModel):
     book_id: int
@@ -42,6 +44,8 @@ class UpdateBookRequest(BaseModel):
     author: Optional[str] = None
     quantity: Optional[int] = None
     shelf: Optional[str] = None
+    book_number: Optional[str] = None
+    category: Optional[str] = None
 
 UPLOAD_FOLDER = "uploads"
 BACKEND_READY = {"gemini": False, "database": False, "auth": False}
@@ -203,18 +207,22 @@ async def upload_book(
     image: UploadFile = File(...),
     quantity: int = Form(...),
     shelf: str = Form(...),
+    book_number: str = Form(...),
+    category: str = Form(default=""),
     admin: dict = Depends(get_admin_user)
 ):
     """Upload book - ADMIN ONLY"""
+    image_path = None
     try:
         print(f"\n{'='*70}")
         print(f"📤 BOOK UPLOAD - Started by: {admin['username']}")
         print(f"{'='*70}")
         
-        image_path = os.path.join(UPLOAD_FOLDER, image.filename)
+        # Save image temporarily for extraction only
+        image_path = os.path.join(UPLOAD_FOLDER, f"temp_{image.filename}")
         with open(image_path, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
-        print(f"✅ Image saved: {image_path}")
+        print(f"✅ Temp image saved for extraction: {image_path}")
 
         # ============ GEMINI VISION API EXTRACTION ============
         print(f"\n🤖 BOOK COVER ANALYSIS: Gemini Vision API")
@@ -292,22 +300,34 @@ async def upload_book(
             "author": author,
             "quantity": quantity,
             "shelf": shelf,
+            "book_number": book_number,
+            "category": category,
             "isbn": gemini_result.get("isbn", "") if gemini_result else "",
             "uploaded_by": admin['username'],
             "extraction_method": extraction_method,
             "gemini_debug": gemini_debug
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Upload error: {e}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    finally:
+        # Always clean up the temp image file
+        try:
+            if image_path and os.path.exists(image_path):
+                os.remove(image_path)
+                print(f"🗑️ Temp image deleted: {image_path}")
+        except:
+            pass
 
 
 # ======================== BOOK SEARCH (PUBLIC - ANYONE CAN SEARCH) ========================
 
 @app.get("/search-book/")
-def search_book(query: str):
-    """Search for books by title or author. Uses partial match first, then fuzzy (typo-tolerant) if no results."""
+def search_book(query: str, category: Optional[str] = None):
+    """Search for books by title or author, optionally filtered by category."""
     try:
         # Validate input
         if not query or query.strip() == "":
@@ -319,7 +339,7 @@ def search_book(query: str):
             }
 
         print(f"\n🔍 Search query: '{query}'")
-        results = search_books(query)
+        results = search_books(query, category=category)
 
         # If no results from partial match, try fuzzy (typo-tolerant) search
         did_you_mean = None
@@ -335,7 +355,9 @@ def search_book(query: str):
                 "title": r[0] if r[0] else "Unknown",
                 "author": r[1] if r[1] else "Unknown",
                 "quantity": r[2] if r[2] else 0,
-                "shelf": r[3] if r[3] else "N/A"
+                "shelf": r[3] if r[3] else "N/A",
+                "book_number": r[4] if len(r) > 4 and r[4] else None,
+                "category": r[5] if len(r) > 5 and r[5] else None
             })
 
         print(f"✅ Found {len(books)} book(s) for query '{query}'\n")
@@ -352,6 +374,44 @@ def search_book(query: str):
     except Exception as e:
         print(f"❌ Search error: {e}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@app.get("/categories-public/")
+def get_public_categories():
+    """Get categories used in the library — no auth required so guests can see them"""
+    try:
+        cats = get_distinct_categories()
+        return {"categories": cats}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/browse-category/")
+def browse_category(category: str):
+    """Browse all books in a specific category — no auth required"""
+    try:
+        if not category or category.strip() == "":
+            return {"count": 0, "books": [], "status": "error", "error": "Category cannot be empty"}
+
+        results = get_books_by_category(category)
+        books = []
+        for r in results:
+            books.append({
+                "title": r[0] if r[0] else "Unknown",
+                "author": r[1] if r[1] else "Unknown",
+                "quantity": r[2] if r[2] else 0,
+                "shelf": r[3] if r[3] else "N/A",
+                "book_number": r[4] if len(r) > 4 and r[4] else None,
+                "category": r[5] if len(r) > 5 and r[5] else None
+            })
+        return {
+            "count": len(books),
+            "books": books,
+            "category": category,
+            "status": "success" if len(books) > 0 else "not_found"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ======================== DEBUG ENDPOINTS (ADMIN ONLY) ========================
@@ -380,7 +440,7 @@ async def add_book_manual(
         if not request.shelf or len(request.shelf.strip()) < 1:
             raise HTTPException(status_code=400, detail="Shelf location cannot be empty")
         
-        ok = insert_book(request.title, request.author, request.quantity, request.shelf, isbn=None)
+        ok = insert_book(request.title, request.author, request.quantity, request.shelf, isbn=None, book_number=request.book_number, category=request.category)
         if not ok:
             raise HTTPException(status_code=500, detail="Failed to save book to database")
         
@@ -424,7 +484,7 @@ async def save_extracted_book(
         if not request.shelf or len(request.shelf.strip()) < 1:
             raise HTTPException(status_code=400, detail="Shelf location cannot be empty")
         
-        ok = insert_book(request.title, request.author, request.quantity, request.shelf, isbn=None)
+        ok = insert_book(request.title, request.author, request.quantity, request.shelf, isbn=None, book_number=request.book_number, category=request.category)
         if not ok:
             raise HTTPException(status_code=500, detail="Failed to save book to database")
         
@@ -461,7 +521,9 @@ async def get_books_for_edit(admin: dict = Depends(get_admin_user)):
                     "author": b[2],
                     "quantity": b[3],
                     "shelf": b[4],
-                    "isbn": b[5]
+                    "isbn": b[5],
+                    "book_number": b[6],
+                    "category": b[7] if len(b) > 7 else None
                 } for b in books
             ]
         }
@@ -491,7 +553,7 @@ async def update_book_endpoint(
         if request.shelf is not None and len(request.shelf.strip()) < 1:
             raise HTTPException(status_code=400, detail="Shelf location cannot be empty")
         
-        ok = update_book(request.book_id, request.title, request.author, request.quantity, request.shelf)
+        ok = update_book(request.book_id, request.title, request.author, request.quantity, request.shelf, request.book_number, request.category)
         
         if not ok:
             raise HTTPException(status_code=404, detail=f"Book with ID {request.book_id} not found")
@@ -524,7 +586,9 @@ async def debug_all_books(admin: dict = Depends(get_admin_user)):
                     "title": b[0],
                     "author": b[1],
                     "quantity": b[2],
-                    "shelf": b[3]
+                    "shelf": b[3],
+                    "book_number": b[5] if len(b) > 5 else None,
+                    "category": b[6] if len(b) > 6 else None
                 } for b in books
             ]
         }
@@ -557,3 +621,59 @@ async def list_users(admin: dict = Depends(get_admin_user)):
         "users": users
     }
 
+
+# ======================== CATEGORY ENDPOINTS (ADMIN ONLY) ========================
+
+@app.get("/categories/")
+async def get_categories(admin: dict = Depends(get_admin_user)):
+    """Get all categories for dropdown - ADMIN ONLY"""
+    try:
+        categories = get_all_categories()
+        return {
+            "categories": [{"id": c[0], "name": c[1]} for c in categories]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CategoryRequest(BaseModel):
+    name: str
+
+
+@app.post("/categories/")
+async def create_category(
+    request: CategoryRequest,
+    admin: dict = Depends(get_admin_user)
+):
+    """Create a new category - ADMIN ONLY"""
+    try:
+        name = request.name.strip()
+        if not name or len(name) < 2:
+            raise HTTPException(status_code=400, detail="Category name must be at least 2 characters")
+        
+        ok = insert_category(name)
+        if not ok:
+            raise HTTPException(status_code=409, detail=f"Category '{name}' already exists")
+        
+        return {"message": f"Category '{name}' created successfully", "name": name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/categories/{category_id}")
+async def remove_category(
+    category_id: int,
+    admin: dict = Depends(get_admin_user)
+):
+    """Delete a category - ADMIN ONLY"""
+    try:
+        ok = delete_category(category_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Category not found")
+        return {"message": "Category deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

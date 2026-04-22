@@ -1033,6 +1033,92 @@ body {
   color: var(--ink-muted);
 }
 
+.book-num-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.18rem 0.55rem;
+  background: #eff6ff;
+  color: var(--navy);
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: 'DM Sans', monospace;
+}
+
+.category-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.55rem;
+  background: #f0fdf4;
+  color: #166534;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* Category combo (dropdown + new category inline) */
+.category-combo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.category-select {
+  width: 100%;
+  padding: 0.6rem 0.9rem;
+  border: 1.5px solid var(--parchment);
+  border-radius: var(--radius-sm);
+  background: var(--warm-white);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  color: var(--ink);
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--t);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2rem;
+}
+.category-select:focus { border-color: var(--amber); }
+
+.new-cat-wrap {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.new-cat-wrap input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1.5px solid var(--amber-light);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.85rem;
+  color: var(--ink);
+  outline: none;
+  background: var(--amber-pale);
+}
+.new-cat-wrap input:focus { border-color: var(--amber); }
+
+.btn-add-cat {
+  padding: 0.5rem 0.85rem;
+  background: linear-gradient(135deg, var(--forest), #2d6b48);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--t);
+}
+.btn-add-cat:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
 .edit-btn {
   display: inline-flex;
   align-items: center;

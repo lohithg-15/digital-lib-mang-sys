@@ -160,14 +160,7 @@
                     <button class="btn-search" id="searchBtn">Search</button>
                 </div>
 
-                <div class="category-chips">
-                    <span class="chips-label">Quick:</span>
-                    <button class="chip" data-query="Fiction">📖 Fiction</button>
-                    <button class="chip" data-query="Science">🔬 Science</button>
-                    <button class="chip" data-query="History">📜 History</button>
-                    <button class="chip" data-query="Programming">💻 Programming</button>
-                    <button class="chip" data-query="Mathematics">🔢 Math</button>
-                </div>
+
 
                 <div id="searchResult" class="search-result-area"></div>
             </div>
@@ -188,6 +181,23 @@
                             <div class="field-group full">
                                 <label for="image">Book Cover Image <span class="req">*</span></label>
                                 <input type="file" id="image" accept="image/*" required>
+                            </div>
+                            <div class="field-group">
+                                <label for="bookNumber">Book Number <span class="req">*</span></label>
+                                <input type="text" id="bookNumber" placeholder="Unique book number" required>
+                            </div>
+                            <div class="field-group">
+                                <label for="uploadCategory">Category <span class="opt">(optional)</span></label>
+                                <div class="category-combo">
+                                    <select id="uploadCategory" class="category-select">
+                                        <option value="">— Select category —</option>
+                                        <option value="__new__">＋ Create new category…</option>
+                                    </select>
+                                    <div id="uploadNewCatWrap" class="new-cat-wrap" style="display:none">
+                                        <input type="text" id="uploadNewCatInput" placeholder="New category name">
+                                        <button type="button" class="btn-add-cat" id="uploadAddCatBtn">Add</button>
+                                    </div>
+                                </div>
                             </div>
                             <div class="field-group">
                                 <label for="quantity">Quantity <span class="req">*</span></label>
@@ -232,8 +242,10 @@
                                 <div class="preview-title" id="previewTitle">Book Title</div>
                                 <div class="preview-author" id="previewAuthor">by Author</div>
                                 <div class="preview-tags">
+                                    <span class="preview-tag qty" id="previewBookNum">Book#: —</span>
                                     <span class="preview-tag qty" id="previewQty">Qty: 1</span>
                                     <span class="preview-tag shelf" id="previewShelf">Shelf: —</span>
+                                    <span class="preview-tag shelf" id="previewCategory">Cat: —</span>
                                 </div>
                             </div>
                         </div>
@@ -251,6 +263,23 @@
                                 <div class="field-group">
                                     <label for="manualAuthor">Author <span class="req">*</span></label>
                                     <input type="text" id="manualAuthor" placeholder="Enter author name" required>
+                                </div>
+                                <div class="field-group">
+                                    <label for="manualBookNumber">Book Number <span class="req">*</span></label>
+                                    <input type="text" id="manualBookNumber" placeholder="Unique book number" required>
+                                </div>
+                                <div class="field-group">
+                                    <label for="manualCategory">Category <span class="opt">(optional)</span></label>
+                                    <div class="category-combo">
+                                        <select id="manualCategory" class="category-select">
+                                            <option value="">— Select category —</option>
+                                            <option value="__new__">＋ Create new category…</option>
+                                        </select>
+                                        <div id="manualNewCatWrap" class="new-cat-wrap" style="display:none">
+                                            <input type="text" id="manualNewCatInput" placeholder="New category name">
+                                            <button type="button" class="btn-add-cat" id="manualAddCatBtn">Add</button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="field-group">
                                     <label for="manualQuantity">Quantity <span class="req">*</span></label>
@@ -344,6 +373,23 @@
                 <div class="field-group">
                     <label for="edit-author">Author</label>
                     <input type="text" id="edit-author">
+                </div>
+                <div class="field-group">
+                    <label for="edit-book-number">Book Number</label>
+                    <input type="text" id="edit-book-number">
+                </div>
+                <div class="field-group">
+                    <label for="edit-category">Category</label>
+                    <div class="category-combo">
+                        <select id="edit-category" class="category-select">
+                            <option value="">— Select category —</option>
+                            <option value="__new__">＋ Create new category…</option>
+                        </select>
+                        <div id="editNewCatWrap" class="new-cat-wrap" style="display:none">
+                            <input type="text" id="editNewCatInput" placeholder="New category name">
+                            <button type="button" class="btn-add-cat" id="editAddCatBtn">Add</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="field-group">
                     <label for="edit-quantity">Quantity</label>
