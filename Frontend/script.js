@@ -149,6 +149,16 @@ function navigateToSection(sectionId) {
     const navItem = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
     if (navItem) navItem.classList.add("active");
 
+    // Auto-load books when navigating to Manage Books section
+    if (sectionId === "manage-section") {
+        loadManageBooks();
+    }
+
+    // Load category chips when navigating to Search section
+    if (sectionId === "search-section") {
+        loadSearchCategories();
+    }
+
     // Close mobile sidebar
     closeSidebar();
 }
@@ -270,9 +280,13 @@ async function validateImage(image) {
     }
 }
 
-async function searchBooks(query) {
+async function searchBooks(query, category) {
     try {
-        const response = await fetch(`${API_URL}/search-book/?query=${encodeURIComponent(query)}`);
+        let url = `${API_URL}/search-book/?query=${encodeURIComponent(query)}`;
+        if (category) {
+            url += `&category=${encodeURIComponent(category)}`;
+        }
+        const response = await fetch(url);
         const data = await response.json();
 
         if (!response.ok) {
@@ -411,7 +425,17 @@ function setupCategoryCombo(selectId, wrapId, inputId, btnId) {
         }
     });
 
-    btn.addEventListener("click", async () => {
+    // Prevent Enter key in category input from submitting the parent form
+    inp.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            btn.click();
+        }
+    });
+
+    btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const name = inp.value.trim();
         if (name.length < 2) { alert("Category name must be at least 2 characters"); return; }
         const result = await createCategory(name);
@@ -425,6 +449,210 @@ function setupCategoryCombo(selectId, wrapId, inputId, btnId) {
             alert(result.error);
         }
     });
+}
+
+// ====================== SEARCH CATEGORY CHIPS ======================
+
+async function loadSearchCategories() {
+    try {
+        const response = await fetch(`${API_URL}/categories-public/`);
+        const data = await response.json();
+        const categories = data.categories || [];
+
+        const chipsDiv = document.getElementById("categoryChips");
+        if (!chipsDiv) return;
+
+        if (categories.length === 0) {
+            chipsDiv.style.display = "none";
+            return;
+        }
+
+        chipsDiv.style.display = "flex";
+
+        // Clear existing chips (rebuild fresh)
+        chipsDiv.innerHTML = '<span class="chips-label">Categories:</span><button class="chip active" data-category="">All</button>';
+
+        // Add category chips
+        categories.forEach(cat => {
+            const chip = document.createElement("button");
+            chip.className = "chip";
+            chip.dataset.category = cat;
+            chip.textContent = cat;
+            chipsDiv.appendChild(chip);
+        });
+
+        // Add click handlers to all chips
+        chipsDiv.querySelectorAll(".chip").forEach(chip => {
+            chip.addEventListener("click", () => {
+                // Update active state
+                chipsDiv.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+                chip.classList.add("active");
+
+                const selectedCategory = chip.dataset.category;
+                const query = document.getElementById("searchQuery").value.trim();
+
+                // If a category is selected with no search query, browse that category
+                if (selectedCategory && !query) {
+                    browseByCategory(selectedCategory);
+                } else if (query) {
+                    // Re-run search with the selected category filter
+                    performSearch(query, selectedCategory);
+                } else {
+                    // "All" clicked with no query — clear results
+                    document.getElementById("searchResult").innerHTML = "";
+                }
+            });
+        });
+    } catch (error) {
+        console.warn("Could not load search categories:", error.message);
+    }
+}
+
+async function browseByCategory(category) {
+    const resultDiv = document.getElementById("searchResult");
+    resultDiv.innerHTML = "";
+    resultDiv.appendChild(createMessage("Loading books\u2026", "loading"));
+
+    try {
+        const response = await fetch(`${API_URL}/browse-category/?category=${encodeURIComponent(category)}`);
+        const data = await response.json();
+
+        resultDiv.innerHTML = "";
+
+        if (data.count === 0) {
+            resultDiv.innerHTML = `
+                <div class="state-box">
+                    <div class="s-icon">\ud83d\udced</div>
+                    <div class="s-title">No books in \u201c${escapeHtml(category)}\u201d</div>
+                    <div class="s-msg">This category has no books yet.</div>
+                </div>
+            `;
+        } else {
+            const countDiv = document.createElement("div");
+            countDiv.className = "result-count";
+            countDiv.textContent = `${data.count} book(s) in \u201c${category}\u201d`;
+            resultDiv.appendChild(countDiv);
+
+            const gridDiv = document.createElement("div");
+            gridDiv.className = "books-grid";
+            data.books.forEach((book, idx) => {
+                gridDiv.innerHTML += renderBookCard(book, idx);
+            });
+            resultDiv.appendChild(gridDiv);
+        }
+    } catch (error) {
+        resultDiv.innerHTML = "";
+        resultDiv.appendChild(createMessage(`\u274c ${error.message}`, "error"));
+    }
+}
+
+async function performSearch(query, category) {
+    const resultDiv = document.getElementById("searchResult");
+    resultDiv.innerHTML = "";
+    resultDiv.appendChild(createMessage("\ud83d\udd0d Searching\u2026", "loading"));
+
+    const result = await searchBooks(query, category || "");
+
+    resultDiv.innerHTML = "";
+
+    if (result.success) {
+        if (result.data.count === 0) {
+            resultDiv.innerHTML = `
+                <div class="state-box">
+                    <div class="s-icon">\ud83d\udced</div>
+                    <div class="s-title">No books found</div>
+                    <div class="s-msg">Try a different search term or check for typos.</div>
+                </div>
+            `;
+        } else {
+            if (result.data.did_you_mean) {
+                const dymDiv = document.createElement("div");
+                dymDiv.className = "did-you-mean";
+                dymDiv.innerHTML = `\ud83d\udd0e Did you mean: <strong>${escapeHtml(result.data.did_you_mean)}</strong>?`;
+                resultDiv.appendChild(dymDiv);
+            }
+
+            const countDiv = document.createElement("div");
+            countDiv.className = "result-count";
+            countDiv.textContent = `Found ${result.data.count} book(s)`;
+            resultDiv.appendChild(countDiv);
+
+            const gridDiv = document.createElement("div");
+            gridDiv.className = "books-grid";
+            result.data.books.forEach((book, idx) => {
+                gridDiv.innerHTML += renderBookCard(book, idx);
+            });
+            resultDiv.appendChild(gridDiv);
+        }
+    } else {
+        resultDiv.appendChild(createMessage(`\u274c ${result.error}`, "error"));
+    }
+}
+
+// ====================== MANAGE BOOKS LOADER ======================
+
+async function loadManageBooks() {
+    const resultDiv = document.getElementById("manageBooksResult");
+    const listDiv = document.getElementById("booksList");
+    const tableDiv = document.getElementById("booksTable");
+
+    resultDiv.innerHTML = "";
+    resultDiv.appendChild(createMessage("\u23f3 Loading books\u2026", "loading"));
+    tableDiv.innerHTML = "";
+
+    const result = await getBooksForEdit();
+
+    resultDiv.innerHTML = "";
+
+    if (result.success) {
+        if (result.data.books.length === 0) {
+            resultDiv.appendChild(createMessage("\ud83d\udced No books in database", "info"));
+            listDiv.style.display = "none";
+        } else {
+            listDiv.style.display = "block";
+            const html = `
+                <table class="books-table">
+                    <thead>
+                        <tr>
+                            <th>Book #</th>
+                            <th>Title</th>
+                            <th>Author</th>
+                            <th>Category</th>
+                            <th>Qty</th>
+                            <th>Shelf</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${result.data.books.map(book => `
+                            <tr>
+                                <td><span class="book-num-pill">${escapeHtml(book.book_number || '\u2014')}</span></td>
+                                <td>${escapeHtml(book.title)}</td>
+                                <td>${escapeHtml(book.author)}</td>
+                                <td><span class="category-pill">${escapeHtml(book.category || '\u2014')}</span></td>
+                                <td><span class="qty-pill">${book.quantity}</span></td>
+                                <td><span class="shelf-pill">${escapeHtml(book.shelf)}</span></td>
+                                <td><button class="edit-btn" data-id="${book.id}">\u270f\ufe0f Edit</button></td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            `;
+            tableDiv.innerHTML = html;
+
+            // Add event listeners to edit buttons
+            tableDiv.querySelectorAll(".edit-btn").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const bookId = btn.getAttribute("data-id");
+                    const book = result.data.books.find(b => b.id === parseInt(bookId));
+                    if (book) showEditModal(book);
+                });
+            });
+        }
+    } else {
+        resultDiv.appendChild(createMessage(`\u274c ${result.error}`, "error"));
+        listDiv.style.display = "none";
+    }
 }
 
 async function addBookManually(title, author, quantity, shelf, bookNumber, category) {
@@ -722,57 +950,18 @@ document.addEventListener("DOMContentLoaded", () => {
     // ===== CUSTOMER SEARCH =====
     document.getElementById("searchBtn").addEventListener("click", async () => {
         const query = document.getElementById("searchQuery").value;
-        const resultDiv = document.getElementById("searchResult");
-        resultDiv.innerHTML = "";
-
         if (!query.trim()) {
+            const resultDiv = document.getElementById("searchResult");
+            resultDiv.innerHTML = "";
             resultDiv.appendChild(createMessage("Please enter a search query", "error"));
             return;
         }
 
-        resultDiv.appendChild(createMessage("🔍 Searching…", "loading"));
+        // Get selected category from chips
+        const activeChip = document.querySelector("#categoryChips .chip.active");
+        const selectedCategory = activeChip ? activeChip.dataset.category : "";
 
-        const result = await searchBooks(query);
-
-        resultDiv.innerHTML = "";
-
-        if (result.success) {
-            if (result.data.count === 0) {
-                resultDiv.innerHTML = `
-                    <div class="state-box">
-                        <div class="s-icon">📭</div>
-                        <div class="s-title">No books found</div>
-                        <div class="s-msg">Try a different search term or check for typos.</div>
-                    </div>
-                `;
-            } else {
-                // "Did you mean?" suggestion
-                if (result.data.did_you_mean) {
-                    const dymDiv = document.createElement("div");
-                    dymDiv.className = "did-you-mean";
-                    dymDiv.innerHTML = `🔎 Did you mean: <strong>${escapeHtml(result.data.did_you_mean)}</strong>?`;
-                    resultDiv.appendChild(dymDiv);
-                }
-
-                // Result count
-                const countDiv = document.createElement("div");
-                countDiv.className = "result-count";
-                countDiv.textContent = `Found ${result.data.count} book(s)`;
-                resultDiv.appendChild(countDiv);
-
-                // Book cards grid
-                const gridDiv = document.createElement("div");
-                gridDiv.className = "books-grid";
-
-                result.data.books.forEach((book, idx) => {
-                    gridDiv.innerHTML += renderBookCard(book, idx);
-                });
-
-                resultDiv.appendChild(gridDiv);
-            }
-        } else {
-            resultDiv.appendChild(createMessage(`❌ ${result.error}`, "error"));
-        }
+        performSearch(query, selectedCategory);
     });
 
     // Search on Enter key
@@ -1055,69 +1244,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (manCatSelPreview) manCatSelPreview.addEventListener("change", updatePreview);
 
     // ===== MANAGE BOOKS =====
-    document.getElementById("loadBooksBtn").addEventListener("click", async () => {
-        const resultDiv = document.getElementById("manageBooksResult");
-        const listDiv = document.getElementById("booksList");
-        const tableDiv = document.getElementById("booksTable");
-
-        resultDiv.innerHTML = "";
-        resultDiv.appendChild(createMessage("⏳ Loading books…", "loading"));
-        tableDiv.innerHTML = "";
-
-        const result = await getBooksForEdit();
-
-        resultDiv.innerHTML = "";
-
-        if (result.success) {
-            if (result.data.books.length === 0) {
-                resultDiv.appendChild(createMessage("📭 No books in database", "info"));
-                listDiv.style.display = "none";
-            } else {
-                listDiv.style.display = "block";
-                const html = `
-                    <table class="books-table">
-                        <thead>
-                            <tr>
-                                <th>Book #</th>
-                                <th>Title</th>
-                                <th>Author</th>
-                                <th>Category</th>
-                                <th>Qty</th>
-                                <th>Shelf</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${result.data.books.map(book => `
-                                <tr>
-                                    <td><span class="book-num-pill">${escapeHtml(book.book_number || '—')}</span></td>
-                                    <td>${escapeHtml(book.title)}</td>
-                                    <td>${escapeHtml(book.author)}</td>
-                                    <td><span class="category-pill">${escapeHtml(book.category || '—')}</span></td>
-                                    <td><span class="qty-pill">${book.quantity}</span></td>
-                                    <td><span class="shelf-pill">${escapeHtml(book.shelf)}</span></td>
-                                    <td><button class="edit-btn" data-id="${book.id}">✏️ Edit</button></td>
-                                </tr>
-                            `).join("")}
-                        </tbody>
-                    </table>
-                `;
-                tableDiv.innerHTML = html;
-
-                // Add event listeners to edit buttons
-                tableDiv.querySelectorAll(".edit-btn").forEach(btn => {
-                    btn.addEventListener("click", () => {
-                        const bookId = btn.getAttribute("data-id");
-                        const book = result.data.books.find(b => b.id === parseInt(bookId));
-                        if (book) showEditModal(book);
-                    });
-                });
-            }
-        } else {
-            resultDiv.appendChild(createMessage(`❌ ${result.error}`, "error"));
-            listDiv.style.display = "none";
-        }
-    });
+    // (loadManageBooks is now a standalone function called from navigateToSection)
 
     // ===== MANAGE TABLE FILTER =====
     document.getElementById("manageSearchInput").addEventListener("input", (e) => {
@@ -1156,7 +1283,7 @@ document.addEventListener("DOMContentLoaded", () => {
             // Reload the books list after short delay
             setTimeout(() => {
                 closeEditModal();
-                document.getElementById("loadBooksBtn").click();
+                loadManageBooks();
             }, 1000);
         } else {
             modalResultDiv.appendChild(createMessage(`❌ ${result.error}`, "error"));

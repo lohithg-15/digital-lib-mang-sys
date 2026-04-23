@@ -50,12 +50,12 @@ On Windows: Double-click **`START_APP.bat`** to start everything automatically.
 
 1. **🔍 Search:**
    - Search books by title or author
+   - Filter results by category using the category chips
    - Typo-tolerant fuzzy search with "Did you mean?" suggestions
-   - Quick-search genre chips (Fiction, Science, History, etc.)
 
 2. **📤 Upload Image:**
    - Upload a book cover image
-   - System extracts title/author using **Google Gemini Vision API**
+   - System extracts title/author using **Google Gemini 2.5 Vision API**
    - Review extracted data in an editable card (amber highlight)
    - Edit any field if Gemini made mistakes
    - Click **"Save to Database"** to confirm
@@ -63,21 +63,22 @@ On Windows: Double-click **`START_APP.bat`** to start everything automatically.
 
 3. **✏️ Add Manually:**
    - Enter title, author, quantity, shelf location directly
+   - Assign a category from the dropdown (or create a new one)
    - Live preview panel shows book card as you type
    - Click **"Add Book"** to save immediately
 
 4. **📋 Manage Books:**
-   - Click **"Load Books"** to see the full catalog table
+   - Books load automatically when you navigate to this section
    - Filter books with the inline search bar
    - Click **"Edit"** button on any book → opens edit modal
-   - Modify quantity/shelf/title/author, click **"Save Changes"**
+   - Modify quantity/shelf/title/author/category, click **"Save Changes"**
 
 5. **🔧 Debug Tools:**
    - View all books in database
    - List all registered users
    - Reset database (caution: deletes all books)
 
-**Customer (Guest):** Search by title or author. No login needed.
+**Customer (Guest):** Search by title or author, filter by category. No login needed.
 
 ---
 

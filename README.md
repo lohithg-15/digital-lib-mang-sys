@@ -1,6 +1,6 @@
 # 📚 Librarium — Digital Library Management System
 
-An intelligent book management system with AI-powered book identification using Gemini Vision API, Open Library lookup, fuzzy search, and role-based access control. Features a warm editorial design with sidebar navigation.
+An intelligent book management system with AI-powered book identification using Gemini Vision API, Open Library lookup, fuzzy search, category-based filtering, and role-based access control. Features a warm editorial design with sidebar navigation.
 
 ## ✨ Features
 
@@ -8,9 +8,10 @@ An intelligent book management system with AI-powered book identification using 
 - Warm editorial design — Playfair Display + DM Sans fonts
 - Sidebar navigation with role-based menu items
 - Book search with colored spine fallback cards
+- Category-based filtering with dynamic chips
 - Live preview while adding a new book
 - Modal-based book editing
-- Quick-search genre chips
+- Auto-loading manage books table
 - Responsive — works on mobile and desktop
 - Fuzzy / typo-tolerant search with "Did you mean?" suggestions
 
@@ -18,8 +19,9 @@ An intelligent book management system with AI-powered book identification using 
 - FastAPI + SQLite (no extra database setup needed)
 - JWT-based authentication with 24-hour tokens
 - Role-based access (Admin / Customer)
-- AI-powered book cover extraction via Google Gemini Vision API
+- AI-powered book cover extraction via Google Gemini 2.5 Vision API
 - Manual book entry support
+- Category management (create, delete, filter)
 - Fuzzy search using Python's built-in difflib
 - Auto-creates database and default admin on first run
 
@@ -41,11 +43,12 @@ Librarium/
 │   ├── book_lookup.py       ← Open Library API identification
 │   ├── requirements.txt     ← Python dependencies
 │   ├── .env                 ← API keys (do not commit)
-│   └── uploads/             ← Uploaded images
+│   └── uploads/             ← Uploaded images (temp)
 ├── Frontend/
 │   ├── index.html           ← Main HTML structure
 │   ├── style.css            ← All styling
-│   └── script.js            ← All frontend logic
+│   ├── script.js            ← All frontend logic
+│   └── images/              ← Logo and static assets
 ├── START_APP.bat             ← Windows one-click startup
 ├── SETUP.md                  ← Quick setup instructions
 ├── .gitignore
@@ -95,7 +98,9 @@ On Windows: Double-click `START_APP.bat` to start everything automatically.
 |--------|----------|------|-------------|
 | GET | `/` | — | Health check |
 | GET | `/status/` | — | Backend status |
-| GET | `/search-book/?query=...` | — | Search (partial + fuzzy) |
+| GET | `/search-book/?query=...&category=...` | — | Search (partial + fuzzy, optional category filter) |
+| GET | `/categories-public/` | — | Get categories used in library |
+| GET | `/browse-category/?category=...` | — | Browse all books in a category |
 | POST | `/auth/login/` | — | Login |
 | POST | `/auth/register/` | — | Register |
 | GET | `/auth/me/` | Bearer | Current user |
@@ -104,21 +109,25 @@ On Windows: Double-click `START_APP.bat` to start everything automatically.
 | POST | `/save-extracted-book/` | Admin | Save extracted book (after review) |
 | POST | `/add-book-manual/` | Admin | Add book manually |
 | GET | `/books-for-edit/` | Admin | Get books with IDs |
-| PUT | `/update-book/` | Admin | Update book (qty/shelf) |
+| PUT | `/update-book/` | Admin | Update book details |
+| GET | `/categories/` | Admin | Get all categories for dropdown |
+| POST | `/categories/` | Admin | Create a new category |
+| DELETE | `/categories/{id}` | Admin | Delete a category |
 | GET | `/debug/all-books/` | Admin | List all books |
 | POST | `/debug/reset-database/` | Admin | Reset DB |
 | GET | `/debug/list-users/` | Admin | List users |
 
 ## 📊 Database
 
-**books:** id, title, author, quantity, shelf, isbn (indexed for search)  
+**books:** id, title, author, quantity, shelf, isbn, book_number, category (indexed for search)  
+**categories:** id, name (unique, for admin dropdown)  
 **users:** id, username, password_hash, role, created_at, last_login, is_active  
 
 ## 🧰 Tech Stack
 
 - **Backend:** FastAPI, Uvicorn, SQLite3  
 - **Frontend:** HTML5, CSS3, JavaScript (Playfair Display + DM Sans)  
-- **Vision AI:** Google Gemini 1.5 Vision API  
+- **Vision AI:** Google Gemini 2.5 Vision API  
 - **Identification:** Open Library API (free, no key)  
 - **Search:** LIKE + difflib fuzzy matching  
 - **Auth:** PyJWT, PBKDF2-SHA256  
