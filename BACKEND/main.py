@@ -10,7 +10,7 @@ from typing import Optional
 # Add BACKEND directory to path so imports work
 sys.path.insert(0, os.path.dirname(__file__))
 
-from gemini_service import extract_book_metadata_with_gemini, validate_gemini_api_key, validate_image_quality
+from gemini_service import extract_book_metadata_with_gemini, validate_gemini_api_key, validate_image_quality, get_book_summary
 from database import create_table, insert_book, search_books, search_books_fuzzy, get_all_books, delete_all_books, update_book, get_books_with_ids, insert_category, get_all_categories, delete_category, get_distinct_categories, get_books_by_category
 from book_lookup import identify_book
 from auth import (
@@ -412,6 +412,44 @@ def browse_category(category: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/book-chat/")
+def book_chat(book_title: str = Form(...)):
+    """Get book information and summary from AI chatbot — no auth required
+    Users can ask about any book title to get summaries and key information.
+    """
+    try:
+        print(f"\n🤖 BOOK CHATBOT - Query: '{book_title}'")
+        
+        result = get_book_summary(book_title)
+        
+        if not result:
+            return {
+                "status": "error",
+                "message": "❌ Failed to fetch book information. Please try again."
+            }
+        
+        if "error" in result:
+            return {
+                "status": "error",
+                "message": result.get("message", "❌ Could not find information about this book"),
+                "book_title": book_title
+            }
+        
+        return {
+            "status": "success",
+            "book_title": result.get("book_title", book_title),
+            "content": result.get("content", ""),
+            "message": "✅ Book information retrieved successfully"
+        }
+    except Exception as e:
+        print(f"❌ Chatbot error: {e}")
+        return {
+            "status": "error",
+            "message": f"❌ Error: {str(e)[:100]}",
+            "book_title": book_title
+        }
 
 
 # ======================== DEBUG ENDPOINTS (ADMIN ONLY) ========================

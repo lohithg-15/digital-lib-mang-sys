@@ -558,3 +558,144 @@ def validate_gemini_api_key() -> bool:
         print("   Get a free key at: https://aistudio.google.com/apikey")
         return False
     return True
+
+
+def get_book_summary(book_title: str) -> Optional[Dict[str, str]]:
+    """
+    Get a detailed summary about a book using Gemini AI.
+    Provides: summary, key points, themes, special things about the book.
+    
+    Args:
+        book_title: Title of the book to get information about
+    
+    Returns:
+        Dictionary with keys: summary, key_points, themes, special_features, author_info
+        Returns None if API fails
+    """
+    
+    if not GEMINI_API_KEY:
+        return {
+            "error": "API not configured",
+            "message": "❌ Gemini API key not set in .env file"
+        }
+    
+    if not book_title or len(book_title.strip()) < 2:
+        return {
+            "error": "Invalid input",
+            "message": "⚠️ Please enter a valid book title"
+        }
+    
+    try:
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        
+        prompt = f"""Provide comprehensive information about the book: "{book_title}"
+
+Please structure your response with the following sections:
+
+1. **Summary**: A brief 2-3 sentence overview of what the book is about
+2. **Key Points**: 4-5 main takeaways or important concepts from the book
+3. **Themes**: The major themes or topics explored
+4. **Why Read It**: Special things about this book - what makes it unique or valuable
+5. **Author**: Brief info about the author
+6. **Best For**: Who would enjoy this book
+
+Format your response in a clear, easy-to-read way with emojis where appropriate.
+If you're not familiar with the exact book, provide information about the most likely book with that title.
+If the book doesn't exist, say "I couldn't find information about this book."
+"""
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt}
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.7,
+                "topK": 40,
+                "topP": 0.95,
+                "maxOutputTokens": 8192,
+                "thinkingConfig": {
+                    "thinkingBudget": 0
+                }
+            }
+        }
+        
+        print(f"   📡 Fetching book info: '{book_title}'...")
+        res = requests.post(
+            url,
+            json=payload,
+            params={"key": GEMINI_API_KEY},
+            timeout=60
+        )
+        
+        if res.status_code != 200:
+            print(f"   ❌ API Error: {res.status_code}")
+            return {
+                "error": "API Error",
+                "message": f"❌ Failed to get book information (Error: {res.status_code})"
+            }
+        
+        res.raise_for_status()
+        data = res.json()
+        
+        # Extract response
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return {
+                "error": "No response",
+                "message": "❌ No information available for this book"
+            }
+        
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not parts:
+            return {
+                "error": "No response",
+                "message": "❌ No information available for this book"
+            }
+        
+        # Gemini 2.5 models may return multiple parts (thoughts + text)
+        # Collect all non-thought text parts
+        response_text = ""
+        for part in parts:
+            if "thought" in part and part.get("thought"):
+                continue  # Skip thought/reasoning parts
+            text = part.get("text", "")
+            if text:
+                response_text += text
+        response_text = response_text.strip()
+        
+        if not response_text or "couldn't find" in response_text.lower():
+            return {
+                "error": "Not found",
+                "message": f"❌ I couldn't find detailed information about '{book_title}'. Try another title!"
+            }
+        
+        print(f"   ✅ Book info retrieved successfully")
+        
+        return {
+            "success": True,
+            "book_title": book_title,
+            "content": response_text
+        }
+        
+    except requests.exceptions.Timeout:
+        print(f"   ⚠️ Request timeout")
+        return {
+            "error": "Timeout",
+            "message": "⏱️ Request timed out. Please try again."
+        }
+    except requests.exceptions.ConnectionError:
+        print(f"   ❌ Connection error")
+        return {
+            "error": "Connection",
+            "message": "❌ Connection failed. Check your internet connection."
+        }
+    except Exception as e:
+        print(f"   ❌ Error: {str(e)[:100]}")
+        return {
+            "error": "Unknown error",
+            "message": f"❌ Error: {str(e)[:100]}"
+        }

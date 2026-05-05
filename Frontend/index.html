@@ -153,19 +153,64 @@
                     </div>
                 </div>
 
-                <div class="search-bar-wrap">
-                    <span class="search-bar-icon">🔍</span>
-                    <input type="text" class="search-input" id="searchQuery" placeholder="Search by title, author…"
-                        autocomplete="off">
-                    <button class="btn-search" id="searchBtn">Search</button>
-                </div>
+                <div class="search-layout">
+                    <!-- Main search area -->
+                    <div class="search-main">
+                        <div class="search-bar-wrap">
+                            <span class="search-bar-icon">🔍</span>
+                            <input type="text" class="search-input" id="searchQuery" placeholder="Search by title, author…"
+                                autocomplete="off">
+                            <button class="btn-search" id="searchBtn">Search</button>
+                        </div>
 
-                <div id="categoryChips" class="category-chips" style="display:none">
-                    <span class="chips-label">Categories:</span>
-                    <button class="chip active" data-category="">All</button>
-                </div>
+                        <div id="categoryChips" class="category-chips" style="display:none">
+                            <span class="chips-label">Categories:</span>
+                            <button class="chip active" data-category="">All</button>
+                        </div>
 
-                <div id="searchResult" class="search-result-area"></div>
+                        <div id="searchResult" class="search-result-area"></div>
+                    </div>
+
+                    <!-- Chatbot sidebar (guest/user only) -->
+                    <div class="chatbot-panel customer-only">
+                        <div class="chatbot-header">
+                            <div class="chatbot-header-top">
+                                <div class="chatbot-title">
+                                    <span class="chatbot-icon">🤖</span>
+                                    <span>Book Info</span>
+                                </div>
+                                <button id="chatbotClearBtn" class="chatbot-clear-btn" title="Clear chat">🗑️</button>
+                            </div>
+                            <p class="chatbot-subtitle">Get instant book summaries</p>
+                        </div>
+
+                        <div class="chatbot-content">
+                            <div class="chatbot-input-area">
+                                <input type="text" id="chatbotInput" class="chatbot-input" placeholder="Ask about any book…" autocomplete="off">
+                                <button id="chatbotSendBtn" class="chatbot-send-btn" title="Get book info">📤</button>
+                            </div>
+
+                            <div id="chatbotMessages" class="chatbot-messages">
+                                <div class="chatbot-welcome">
+                                    <div class="welcome-message">
+                                        <p><strong>Welcome to Book AI! 📚</strong></p>
+                                        <p>Type any book title to get:</p>
+                                        <ul>
+                                            <li>📖 Book summary</li>
+                                            <li>💡 Key points & themes</li>
+                                            <li>✨ What makes it special</li>
+                                            <li>👤 Author info</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="chatbot-footer">
+                                <span class="powered-by">Powered by Gemini AI ✨</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- ===== UPLOAD SECTION (Admin) ===== -->

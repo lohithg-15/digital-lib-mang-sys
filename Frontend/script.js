@@ -119,6 +119,12 @@ function showAppPage() {
         item.style.display = appState.userRole === "admin" ? "flex" : "none";
     });
 
+    // Show/hide customer-only elements (chatbot) — hidden for admin
+    const customerItems = document.querySelectorAll(".customer-only");
+    customerItems.forEach(item => {
+        item.style.display = appState.userRole === "admin" ? "none" : "";
+    });
+
     // Update sidebar footer user info
     const username = appState.user ? appState.user.username : "User";
     const displayName = username.charAt(0).toUpperCase() + username.slice(1);
@@ -971,6 +977,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // ===== CHATBOT INITIALIZATION =====
+    initializeChatbot();
+
     // ===== ADMIN UPLOAD =====
     document.getElementById("uploadForm").addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -1410,3 +1419,275 @@ document.addEventListener("DOMContentLoaded", () => {
         showLoginPage();
     }
 });
+
+// ====================== CHATBOT ======================
+
+function initializeChatbot() {
+    const chatbotInput = document.getElementById("chatbotInput");
+    const chatbotSendBtn = document.getElementById("chatbotSendBtn");
+    const chatbotClearBtn = document.getElementById("chatbotClearBtn");
+
+    if (!chatbotInput || !chatbotSendBtn) return; // Skip if elements don't exist
+
+    // Send button click
+    chatbotSendBtn.addEventListener("click", async () => {
+        const bookTitle = chatbotInput.value.trim();
+        if (!bookTitle) {
+            showChatbotError("Please enter a book title");
+            return;
+        }
+        await getBookChatInfo(bookTitle);
+        chatbotInput.value = "";
+    });
+
+    // Enter key in input
+    chatbotInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+            chatbotSendBtn.click();
+        }
+    });
+
+    // Clear button — reset chat to welcome state
+    if (chatbotClearBtn) {
+        chatbotClearBtn.addEventListener("click", () => {
+            const chatMessages = document.getElementById("chatbotMessages");
+            if (chatMessages) {
+                chatMessages.innerHTML = `
+                    <div class="chatbot-welcome">
+                        <div class="welcome-message">
+                            <p><strong>Welcome to Book AI! 📚</strong></p>
+                            <p>Type any book title to get:</p>
+                            <ul>
+                                <li>📖 Book summary</li>
+                                <li>💡 Key points & themes</li>
+                                <li>✨ What makes it special</li>
+                                <li>👤 Author info</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+            chatbotInput.value = "";
+            chatbotInput.focus();
+        });
+    }
+}
+
+async function getBookChatInfo(bookTitle) {
+    try {
+        const chatMessages = document.getElementById("chatbotMessages");
+        const chatbotSendBtn = document.getElementById("chatbotSendBtn");
+        const chatbotInput = document.getElementById("chatbotInput");
+        
+        // Clear welcome message on first query
+        if (chatMessages.querySelector(".chatbot-welcome")) {
+            chatMessages.innerHTML = "";
+        }
+
+        // Add user message
+        addChatMessage(bookTitle, "user");
+
+        // Show loading state
+        chatbotSendBtn.classList.add("loading");
+        chatbotSendBtn.disabled = true;
+        chatbotInput.disabled = true;
+        addLoadingMessage();
+
+        const formData = new FormData();
+        formData.append("book_title", bookTitle);
+
+        const response = await fetch(`${API_URL}/book-chat/`, {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await response.json();
+
+        removeLoadingMessage();
+        chatbotSendBtn.classList.remove("loading");
+        chatbotSendBtn.disabled = false;
+        chatbotInput.disabled = false;
+        chatbotInput.focus();
+
+        if (data.status === "success" && data.content) {
+            // Add bot response
+            addChatMessage(data.content, "bot");
+        } else {
+            showChatbotError(data.message || "Could not fetch book information");
+        }
+
+    } catch (error) {
+        removeLoadingMessage();
+        const chatbotSendBtn = document.getElementById("chatbotSendBtn");
+        const chatbotInput = document.getElementById("chatbotInput");
+        chatbotSendBtn.classList.remove("loading");
+        chatbotSendBtn.disabled = false;
+        chatbotInput.disabled = false;
+        showChatbotError(`Error: ${error.message}`);
+    }
+}
+
+function renderMarkdown(text) {
+    // Convert markdown text to safe HTML
+    const lines = text.split('\n');
+    let html = '';
+    let inList = false;
+    let listType = ''; // 'ul' or 'ol'
+
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+
+        // Check for list items
+        const ulMatch = line.match(/^[\s]*[-*•]\s+(.*)/);
+        const olMatch = line.match(/^[\s]*(\d+)[.)]\s+(.*)/);
+
+        if (ulMatch) {
+            if (!inList || listType !== 'ul') {
+                if (inList) html += `</${listType}>`;
+                html += '<ul>';
+                inList = true;
+                listType = 'ul';
+            }
+            html += `<li>${inlineMarkdown(ulMatch[1])}</li>`;
+            continue;
+        } else if (olMatch) {
+            if (!inList || listType !== 'ol') {
+                if (inList) html += `</${listType}>`;
+                html += '<ol>';
+                inList = true;
+                listType = 'ol';
+            }
+            html += `<li>${inlineMarkdown(olMatch[2])}</li>`;
+            continue;
+        } else if (inList && line.trim() === '') {
+            html += `</${listType}>`;
+            inList = false;
+            listType = '';
+            continue;
+        } else if (inList && !ulMatch && !olMatch) {
+            html += `</${listType}>`;
+            inList = false;
+            listType = '';
+        }
+
+        // Headers
+        if (line.match(/^###\s+(.*)/)) {
+            html += `<h4 class="chat-h4">${inlineMarkdown(line.replace(/^###\s+/, ''))}</h4>`;
+        } else if (line.match(/^##\s+(.*)/)) {
+            html += `<h3 class="chat-h3">${inlineMarkdown(line.replace(/^##\s+/, ''))}</h3>`;
+        } else if (line.match(/^#\s+(.*)/)) {
+            html += `<h3 class="chat-h3">${inlineMarkdown(line.replace(/^#\s+/, ''))}</h3>`;
+        } else if (line.trim() === '') {
+            html += '<br>';
+        } else {
+            html += `<p>${inlineMarkdown(line)}</p>`;
+        }
+    }
+
+    if (inList) html += `</${listType}>`;
+    return html;
+}
+
+function inlineMarkdown(text) {
+    // Escape HTML entities first
+    let safe = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    // Bold: **text**
+    safe = safe.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Italic: *text*
+    safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // Inline code: `text`
+    safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    return safe;
+}
+
+function addChatMessage(text, type) {
+    const chatMessages = document.getElementById("chatbotMessages");
+    if (!chatMessages) return;
+
+    const messageDiv = document.createElement("div");
+    messageDiv.className = `chat-message ${type}`;
+
+    const avatar = document.createElement("div");
+    avatar.className = "message-avatar";
+    avatar.textContent = type === "user" ? "👤" : "🤖";
+
+    const bubble = document.createElement("div");
+    bubble.className = "message-bubble";
+
+    if (type === "user") {
+        bubble.textContent = text;
+    } else {
+        bubble.innerHTML = renderMarkdown(text);
+    }
+
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(bubble);
+
+    chatMessages.appendChild(messageDiv);
+
+    // Scroll to bottom
+    setTimeout(() => {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }, 100);
+}
+
+function addLoadingMessage() {
+    const chatMessages = document.getElementById("chatbotMessages");
+    if (!chatMessages) return;
+
+    const messageDiv = document.createElement("div");
+    messageDiv.className = "chat-message bot";
+    messageDiv.id = "chatbot-loading-msg";
+
+    const avatar = document.createElement("div");
+    avatar.className = "message-avatar";
+    avatar.textContent = "🤖";
+
+    const bubble = document.createElement("div");
+    bubble.className = "message-bubble";
+    bubble.innerHTML = `<div class="message-loading"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>`;
+
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(bubble);
+    chatMessages.appendChild(messageDiv);
+
+    setTimeout(() => {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }, 100);
+}
+
+function removeLoadingMessage() {
+    const el = document.getElementById("chatbot-loading-msg");
+    if (el) el.remove();
+}
+
+function showChatbotError(message) {
+    const chatMessages = document.getElementById("chatbotMessages");
+    if (!chatMessages) return;
+
+    const messageDiv = document.createElement("div");
+    messageDiv.className = "chat-message bot";
+
+    const avatar = document.createElement("div");
+    avatar.className = "message-avatar";
+    avatar.textContent = "⚠️";
+
+    const bubble = document.createElement("div");
+    bubble.className = "message-bubble message-error";
+    bubble.textContent = message;
+
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(bubble);
+
+    chatMessages.appendChild(messageDiv);
+
+    // Scroll to bottom
+    setTimeout(() => {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }, 100);
+}
